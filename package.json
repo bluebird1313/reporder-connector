@@ -1,8 +1,12 @@
 {
-  "name": "retail-inventory-connector",
+  "name": "reporder-connector",
   "version": "1.0.0",
-  "description": "Unified service for connecting to multiple retailer platforms to monitor inventory levels and trigger reorder signals",
+  "description": "Production-ready backend API for connecting retail platforms (Shopify, Lightspeed, Square) to the RepOrder dashboard",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bluebird1313/reporder-connector.git"
+  },
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",

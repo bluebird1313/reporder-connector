@@ -1,49 +1,89 @@
-# Retail Inventory Connector (RIC)
+# RepOrder Connector
 
-> Unified service for connecting to multiple retailer platforms (Shopify, Lightspeed, Square, and others) to monitor inventory levels and trigger reorder signals.
+> Production-ready backend API for connecting retail platforms (Shopify, Lightspeed, Square) to the RepOrder dashboard for real-time inventory monitoring and synchronization.
+
+## 🚀 Live Deployment
+
+- **Backend API**: https://reporder-api.onrender.com
+- **Frontend Dashboard**: https://v0-rep-order-connector-dashboard.vercel.app
+- **Status**: ✅ Deployed and operational
 
 ## Overview
 
-RIC is a standalone service that integrates with RepOrder via API and webhooks to provide real-time inventory monitoring across multiple retail platforms. It features:
+RepOrder Connector is a production Express.js API service that provides:
 
-- **Multi-Platform Support**: Shopify, Lightspeed Retail, Square, and more
-- **Real-Time Monitoring**: Webhook-based inventory updates with polling fallback
-- **Out-of-Stock Detection**: Configurable thresholds with hysteresis to prevent noise
-- **Unified Data Model**: Platform-agnostic inventory representation
-- **Scalable Architecture**: Queue-based processing with Redis and PostgreSQL
+- **Multi-Platform Support**: Shopify (live), Lightspeed, Square (in development)
+- **Real-Time Sync**: Webhook-based updates with background job processing
+- **OAuth Authentication**: Secure platform authorization flows
+- **RESTful API**: Clean endpoints for connection management and sync operations
+- **Scalable Architecture**: BullMQ job queues with Redis, Supabase PostgreSQL backend
+- **Auto-Deploy**: GitHub → Render CI/CD pipeline
 
 ## Architecture
 
 ```
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐    ┌──────────────┐
-│   Retailer  │───▶│   Adapters   │───▶│    Queue    │───▶│    Worker    │
-│ (Shopify,   │    │ (OAuth +     │    │  (Redis/    │    │ (Incident    │
-│ Lightspeed, │    │  Webhooks)   │    │   BullMQ)   │    │ Detection)   │
-│  Square)    │    │              │    │             │    │              │
-└─────────────┘    └──────────────┘    └─────────────┘    └──────────────┘
-                                                                    │
-                   ┌──────────────┐    ┌─────────────┐             │
-                   │   RepOrder   │◀───│    API      │◀────────────┘
-                   │  (Webhooks)  │    │ (Incidents, │
-                   │              │    │  Analytics) │
-                   └──────────────┘    └─────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     PRODUCTION DEPLOYMENT                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────┐         ┌─────────────────┐                  │
+│  │   Vercel     │────────▶│  Render.com     │                  │
+│  │  (Frontend)  │  HTTPS  │  (Backend API)  │                  │
+│  │              │         │                 │                  │
+│  │  Next.js 16  │         │  Express.js     │                  │
+│  │  Dashboard   │         │  + TypeScript   │                  │
+│  └──────────────┘         └────────┬────────┘                  │
+│                                     │                            │
+│                           ┌─────────┴─────────┐                 │
+│                           │                   │                 │
+│                    ┌──────▼──────┐    ┌──────▼──────┐          │
+│                    │  Supabase   │    │   Redis     │          │
+│                    │ (PostgreSQL)│    │  (Valkey)   │          │
+│                    │  Database   │    │   Queue     │          │
+│                    └─────────────┘    └─────────────┘          │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                    ┌─────────▼──────────┐
+                    │   Retail Platforms  │
+                    ├─────────────────────┤
+                    │  • Shopify (OAuth)  │
+                    │  • Lightspeed       │
+                    │  • Square           │
+                    └─────────────────────┘
 ```
 
 ## Quick Start
 
-### Prerequisites
+### API Endpoints (Production)
+
+The API is live and accessible at `https://reporder-api.onrender.com`:
+
+```bash
+# Health check
+curl https://reporder-api.onrender.com/health
+
+# List connections
+curl https://reporder-api.onrender.com/api/connections
+
+# Initiate Shopify OAuth
+https://reporder-api.onrender.com/api/shopify/auth?shop=your-store.myshopify.com
+```
+
+### Local Development
+
+#### Prerequisites
 
 - Node.js 18+
-- PostgreSQL 14+
-- Redis 6+
-- Supabase account (or local PostgreSQL)
+- Redis (local or Docker)
+- Supabase account
 
-### Installation
+#### Setup
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-org/retail-inventory-connector.git
-   cd retail-inventory-connector
+   git clone https://github.com/bluebird1313/reporder-connector.git
+   cd reporder-connector
    ```
 
 2. **Install dependencies**
@@ -53,191 +93,221 @@ RIC is a standalone service that integrates with RepOrder via API and webhooks t
 
 3. **Set up environment variables**
    ```bash
+   cd services/api
    cp .env.example .env
-   # Edit .env with your configuration
+   # Edit .env with your credentials
    ```
 
-4. **Initialize the database**
-   ```bash
-   npm run db:migrate
-   ```
-
-5. **Start development servers**
+4. **Start the API server**
    ```bash
    npm run dev
    ```
 
-### Environment Configuration
+   The API will be available at `http://localhost:3004`
 
-Key environment variables:
+5. **Test locally**
+   ```bash
+   curl http://localhost:3004/health
+   ```
+
+### Environment Variables
+
+Required environment variables for the API:
 
 ```env
-# Database
+# Server
+NODE_ENV=development
+PORT=3004
+
+# Supabase
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
-# Redis
-REDIS_URL=redis://localhost:6379
+# Redis (for BullMQ)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
 
 # Shopify
-SHOPIFY_CLIENT_ID=your-app-client-id
-SHOPIFY_CLIENT_SECRET=your-app-client-secret
-SHOPIFY_WEBHOOK_SECRET=your-webhook-secret
+SHOPIFY_API_KEY=your-shopify-api-key
+SHOPIFY_API_SECRET=your-shopify-api-secret
+SHOPIFY_SCOPES=read_products,read_inventory,read_locations
 
-# RepOrder Integration
-REPORDER_WEBHOOK_URL=https://reporder-api.com/webhooks/inventory
-REPORDER_API_KEY=your-api-key
+# Application URL
+APP_URL=http://localhost:3004
 ```
+
+See `services/api/.env.example` for the complete list.
 
 ## Platform Setup
 
-### Shopify
+### Shopify (✅ Live)
 
-1. Create a Shopify Partner account
+1. Create a [Shopify Partner account](https://partners.shopify.com)
 2. Create a new app with these scopes:
+   - `read_products`
    - `read_inventory`
-   - `read_products` 
    - `read_locations`
-3. Configure webhook endpoints:
-   - `https://your-domain.com/webhooks/shopify/inventory`
-4. Set up OAuth redirect URI:
-   - `https://your-domain.com/auth/shopify/callback`
+3. Configure OAuth redirect URI:
+   - **Production**: `https://reporder-api.onrender.com/api/shopify/callback`
+   - **Development**: `http://localhost:3004/api/shopify/callback`
+4. Set app URL:
+   - **Frontend**: `https://v0-rep-order-connector-dashboard.vercel.app`
 
-### Lightspeed Retail
+### Lightspeed Retail (🚧 In Development)
 
 1. Register as a Lightspeed developer
 2. Create an OAuth application
-3. Configure polling intervals (webhooks are limited)
-4. Set up API credentials
+3. Configure API credentials in environment variables
+4. Implement polling for inventory updates
 
-### Square
+### Square (🚧 Planned)
 
 1. Create a Square Developer account
 2. Create an application with permissions:
    - `INVENTORY_READ`
    - `ITEMS_READ`
    - `MERCHANT_PROFILE_READ`
-3. Configure webhook subscriptions for `inventory.count.updated`
+3. Configure OAuth and webhook endpoints
 
 ## Project Structure
 
 ```
-retail-inventory-connector/
-├── adapters/           # Platform-specific adapters
-│   ├── shopify/       # Shopify OAuth + GraphQL
-│   ├── lightspeed/    # Lightspeed REST API + polling
-│   ├── square/        # Square REST API + webhooks
-│   └── shared/        # Common utilities
-├── core/              # Shared business logic
-│   ├── models/        # Data models and schemas
-│   ├── services/      # Business services
-│   └── types/         # TypeScript definitions
-├── services/          # Microservices
-│   ├── api/          # REST API server
-│   └── worker/       # Queue workers
-├── apps/             # Applications
-│   ├── web/          # Merchant installation site
-│   └── admin/        # Internal admin console
-├── infra/            # Infrastructure
-│   ├── supabase/     # Database schema & policies
-│   └── deploy/       # Deployment configs
-└── context-pack/     # AI development context
-    ├── adapters/     # Platform documentation
-    └── prompts/      # Development guidelines
+reporder-connector/
+├── services/
+│   ├── api/                    # 🚀 Main Express API (deployed to Render)
+│   │   ├── src/
+│   │   │   ├── api/routes/    # API endpoints
+│   │   │   ├── lib/           # Utilities (logger, queue, supabase)
+│   │   │   ├── middleware/    # Express middleware (CORS, errors)
+│   │   │   └── types/         # TypeScript definitions
+│   │   ├── dist/              # Compiled JavaScript
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   └── worker/                # Queue workers (planned)
+│
+├── adapters/                  # Platform-specific integrations
+│   ├── shopify/              # ✅ Shopify OAuth + API
+│   ├── lightspeed/           # 🚧 In development
+│   └── square/               # 🚧 Planned
+│
+├── core/                     # Shared business logic
+│   ├── types/               # Common TypeScript types
+│   └── adapters.ts          # Adapter registry
+│
+├── infra/
+│   ├── supabase/            # Database schemas and RLS policies
+│   └── github/workflows/    # CI/CD pipelines
+│
+├── db/migrations/           # Database migration scripts
+│
+├── context-pack/            # AI development documentation
+│   ├── adapters/           # Platform integration guides
+│   └── glossary.md         # Project terminology
+│
+├── render.yaml             # 🚀 Render deployment config
+├── RENDER_DEPLOYMENT.md    # Deployment guide
+└── package.json            # Root workspace config
 ```
+
+**Frontend (Separate Repository):**
+- **Repo**: `reporder-frontend` (separate GitHub repo)
+- **Tech**: Next.js 16 + TypeScript + Tailwind CSS
+- **Deployed**: Vercel at https://v0-rep-order-connector-dashboard.vercel.app
 
 ## API Documentation
 
-### Webhook Endpoints
+### Core Endpoints
 
-#### Shopify
-```
-POST /webhooks/shopify/{shop-domain}
-Headers:
-  X-Shopify-Topic: inventory_levels/update
-  X-Shopify-Hmac-Sha256: <signature>
-```
-
-#### Lightspeed
-```
-POST /webhooks/lightspeed/{account-id}
-Headers:
-  X-Lightspeed-Signature: <signature>
-```
-
-#### Square
-```
-POST /webhooks/square/{merchant-id}
-Headers:
-  X-Square-Signature: <signature>
-```
-
-### Integration Endpoints
-
-#### RepOrder Notifications
-```json
-POST ${REPORDER_WEBHOOK_URL}
-{
-  "type": "OOS_OPENED|OOS_RESOLVED",
-  "platform": "shopify",
-  "shop": "store123",
-  "variantId": "12345",
-  "qty": 0,
-  "threshold": 2,
-  "incidentId": "inc_abc123",
-  "observedAt": "2025-10-27T12:34:56Z"
+#### Health Check
+```http
+GET /health
+Response: {
+  "status": "ok",
+  "timestamp": "2025-10-29T18:28:37.965Z",
+  "environment": "production",
+  "version": "0.1.0"
 }
+```
+
+#### Connections Management
+```http
+# List all connections
+GET /api/connections
+
+# Get connection details
+GET /api/connections/:id
+
+# Create new connection
+POST /api/connections
+Body: { platform, shop_domain, access_token }
+
+# Update connection
+PUT /api/connections/:id
+Body: { status, settings }
+
+# Delete connection
+DELETE /api/connections/:id
+```
+
+#### Sync Operations
+```http
+# Trigger manual sync
+POST /api/sync/:connectionId
+
+# Get sync status
+GET /api/sync/:connectionId/status
+```
+
+### Shopify Integration
+
+#### OAuth Flow
+```http
+# Step 1: Initiate OAuth
+GET /api/shopify/auth?shop=store-name.myshopify.com
+
+# Step 2: Callback (handled automatically)
+GET /api/shopify/callback?shop=...&code=...&state=...
+
+# Step 3: Verify connection
+GET /api/shopify/verify?shop=store-name.myshopify.com
+```
+
+#### Webhooks (Planned)
+```http
+POST /api/shopify/webhooks
+Headers:
+  X-Shopify-Topic: products/update | inventory_levels/update
+  X-Shopify-Hmac-Sha256: <signature>
 ```
 
 ## Development
 
-### Adding a New Platform
+### Local Development Workflow
 
-1. **Create adapter directory**
+1. **Start services**
    ```bash
-   mkdir adapters/new-platform
-   cd adapters/new-platform
+   # Terminal 1: Start API server
+   cd services/api
+   npm run dev
+   
+   # Terminal 2: Start Redis (if local)
+   redis-server
    ```
 
-2. **Implement RetailAdapter interface**
-   ```typescript
-   export class NewPlatformAdapter implements RetailAdapter {
-     platform = 'new-platform' as const;
-     
-     async auth(request: AuthRequest): Promise<AuthResult> { /* ... */ }
-     async subscribe(shop: Shop): Promise<void> { /* ... */ }
-     // ... implement other methods
-   }
-   ```
+2. **Make changes**
+   - Edit files in `services/api/src/`
+   - Hot reload automatically applies changes
 
-3. **Add platform documentation**
+3. **Test your changes**
    ```bash
-   # Create context-pack/adapters/new-platform.md
-   # Document OAuth flow, API endpoints, data mapping
+   # Test health endpoint
+   curl http://localhost:3004/health
+   
+   # Test Shopify OAuth (use test scripts)
+   ./services/api/test-shopify-oauth.ps1  # Windows
+   ./services/api/test-shopify-oauth.sh   # Unix/Mac
    ```
-
-4. **Register the adapter**
-   ```typescript
-   // In services/api/src/adapters.ts
-   import { NewPlatformAdapter } from '../../../adapters/new-platform';
-   registry.register(new NewPlatformAdapter());
-   ```
-
-### Testing
-
-```bash
-# Run all tests
-npm test
-
-# Run adapter-specific tests
-npm test -- adapters/shopify
-
-# Run integration tests
-npm run test:integration
-
-# Generate test coverage
-npm run test:coverage
-```
 
 ### Code Quality
 
@@ -248,45 +318,195 @@ npm run lint
 # Type checking
 npm run type-check
 
-# Format code
-npm run format
+# Build (TypeScript compilation)
+cd services/api
+npm run build
 ```
+
+### Adding a New Platform Adapter
+
+1. **Create adapter directory**
+   ```bash
+   mkdir adapters/new-platform
+   cd adapters/new-platform
+   npm init -y
+   ```
+
+2. **Implement OAuth and API client**
+   ```typescript
+   // adapters/new-platform/src/auth.ts
+   export async function initiateOAuth(shop: string) { /* ... */ }
+   export async function handleCallback(code: string) { /* ... */ }
+   ```
+
+3. **Add API route**
+   ```typescript
+   // services/api/src/api/routes/new-platform.ts
+   router.get('/auth', initiateOAuth);
+   router.get('/callback', handleCallback);
+   ```
+
+4. **Document the integration**
+   - Create `context-pack/adapters/new-platform.md`
+   - Document OAuth flow, API endpoints, data models
 
 ## Deployment
 
-### Production Setup
+### Production Deployment (Render)
 
-1. **Infrastructure**
+The backend API is deployed to **Render.com** with automatic deployments from GitHub.
+
+**📚 Full Guide**: See [RENDER_DEPLOYMENT.md](RENDER_DEPLOYMENT.md) for complete deployment instructions.
+
+#### Quick Deploy
+
+1. **Push to GitHub**
    ```bash
-   # Deploy to Fly.io
-   flyctl deploy
-
-   # Or deploy to Cloud Run
-   gcloud run deploy
+   git add .
+   git commit -m "Deploy updates"
+   git push origin main
    ```
 
-2. **Database Migration**
-   ```bash
-   npm run db:migrate:production
-   ```
+2. **Render Auto-Deploys**
+   - Render detects the push
+   - Builds using `render.yaml` configuration
+   - Deploys to production automatically
 
-3. **Environment Variables**
-   - Set production secrets in your deployment platform
-   - Use encrypted storage for OAuth tokens
-   - Configure monitoring and alerting
+#### Services Deployed
+
+- **reporder-api** (Web Service)
+  - URL: https://reporder-api.onrender.com
+  - Plan: Free tier (or Starter for production)
+  - Auto-deploy: Enabled on `main` branch
+  
+- **reporder-redis** (Redis Instance)
+  - Managed Redis/Valkey instance
+  - Connected to API service
+  - Used for BullMQ job queues
+
+#### Environment Variables
+
+Set these in Render Dashboard:
+```env
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+SHOPIFY_API_KEY
+SHOPIFY_API_SECRET
+REDIS_HOST         # Auto-set by Render
+REDIS_PORT         # Auto-set by Render
+APP_URL            # Your Render URL
+FRONTEND_URL       # Your Vercel frontend URL
+```
+
+### Frontend Deployment (Vercel)
+
+The frontend dashboard is deployed separately on **Vercel**:
+
+- **URL**: https://v0-rep-order-connector-dashboard.vercel.app
+- **Framework**: Next.js 16 with App Router
+- **Auto-deploy**: Enabled from separate GitHub repo
 
 ### Monitoring
 
-- **Metrics**: Inventory sync latency, detection accuracy, error rates
-- **Logging**: Structured JSON logs with correlation IDs
-- **Alerting**: Failed syncs, webhook delivery issues, rate limit breaches
+- **Backend Logs**: Render Dashboard → reporder-api → Logs
+- **Frontend Logs**: Vercel Dashboard → Deployments → Function Logs
+- **Health Check**: https://reporder-api.onrender.com/health
+- **Uptime**: Consider UptimeRobot for free tier to prevent cold starts
 
-### Scaling
+### Scaling Considerations
 
-- **Horizontal**: Scale API servers and workers independently
-- **Database**: Use connection pooling and read replicas
-- **Queue**: Distribute workers across multiple Redis instances
-- **Caching**: Cache frequently accessed inventory data
+**Free Tier Limitations:**
+- API spins down after 15 minutes inactivity
+- 25MB Redis storage
+- First request after spin-down: ~30-90 seconds
+
+**Production Recommendations:**
+- Upgrade to Starter plan ($7/mo) to eliminate spin-down
+- Consider Redis upgrade for higher volume
+- Monitor response times and error rates
+- Implement caching for frequently accessed data
+
+## Tech Stack
+
+**Backend:**
+- Node.js 18+ with TypeScript
+- Express.js REST API
+- Supabase (PostgreSQL)
+- Redis (BullMQ for job queues)
+- Winston (structured logging)
+- Zod (validation)
+
+**Frontend:**
+- Next.js 16 (App Router)
+- React 19
+- TypeScript
+- Tailwind CSS v4
+- shadcn/ui components
+
+**Infrastructure:**
+- Backend: Render.com
+- Frontend: Vercel
+- Database: Supabase
+- Redis: Render managed instance
+
+## Troubleshooting
+
+### API Issues
+
+**Cold Start (Free Tier)**
+- **Symptom**: First request takes 30-90 seconds
+- **Solution**: Upgrade to Starter plan or use uptime monitoring
+
+**CORS Errors**
+- **Symptom**: Frontend can't reach backend
+- **Check**: `FRONTEND_URL` is set correctly in Render
+- **Verify**: Frontend URL matches exactly (no trailing slash)
+
+**OAuth Failures**
+- **Check Shopify**: Redirect URI matches production URL
+- **Check Logs**: Render Dashboard → reporder-api → Logs
+- **Verify**: `SHOPIFY_API_KEY` and `SHOPIFY_API_SECRET` are correct
+
+### Database Issues
+
+**Connection Errors**
+- **Verify**: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are set
+- **Check**: Supabase project is not paused
+- **Test**: Visit Supabase dashboard to verify project status
+
+**Missing Tables**
+- **Run migrations**: Check `infra/supabase/` for schema
+- **Verify**: Tables exist in Supabase dashboard
+
+### Deployment Issues
+
+**Build Failures**
+- **Check**: Render logs for specific error
+- **Verify**: TypeScript compiles locally (`npm run build`)
+- **Solution**: See [RENDER_DEPLOYMENT.md](RENDER_DEPLOYMENT.md)
+
+## Roadmap
+
+**Current Sprint:**
+- [x] Shopify OAuth integration
+- [x] Backend API deployment (Render)
+- [x] Frontend dashboard (Vercel)
+- [x] Connection management endpoints
+- [ ] Shopify webhook handlers
+- [ ] Background sync jobs
+
+**Q4 2024:**
+- [ ] Complete Shopify adapter (webhooks, bulk sync)
+- [ ] Lightspeed adapter
+- [ ] Square adapter
+- [ ] Advanced sync scheduling
+- [ ] Analytics dashboard
+
+**2025:**
+- [ ] WooCommerce and BigCommerce adapters
+- [ ] Real-time inventory monitoring
+- [ ] Predictive reorder suggestions
+- [ ] Mobile app
 
 ## Contributing
 
@@ -296,60 +516,23 @@ npm run format
 4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-### Development Guidelines
+**Development Guidelines:**
+- Use TypeScript for type safety
+- Follow existing code structure
+- Update documentation for new features
+- Test locally before pushing
 
-- Follow the [coding standards](context-pack/coding-standards.md)
-- Add tests for new features
-- Update documentation
-- Use conventional commit messages
+## Support
 
-## Troubleshooting
-
-### Common Issues
-
-#### OAuth Callback Errors
-```bash
-# Check HMAC validation
-curl -X POST "your-domain.com/auth/shopify/callback" \
-  -d "shop=test.myshopify.com&code=abc123&hmac=xyz789"
-```
-
-#### Webhook Delivery Failures
-```bash
-# Verify webhook signature
-node -e "
-const crypto = require('crypto');
-const payload = 'webhook payload';
-const secret = 'your-secret';
-const signature = crypto.createHmac('sha256', secret).update(payload).digest('base64');
-console.log(signature);
-"
-```
-
-#### Database Connection Issues
-```bash
-# Test Supabase connection
-npx supabase status
-npx supabase db reset --linked
-```
-
-### Support
-
-- **Documentation**: [Context Pack](context-pack/)
-- **Issues**: [GitHub Issues](https://github.com/your-org/retail-inventory-connector/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/retail-inventory-connector/discussions)
+- **Documentation**: See `context-pack/` directory
+- **Issues**: [GitHub Issues](https://github.com/bluebird1313/reporder-connector/issues)
+- **Deployment Guide**: [RENDER_DEPLOYMENT.md](RENDER_DEPLOYMENT.md)
+- **API Docs**: [services/api/README.md](services/api/README.md)
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Roadmap
-
-- [ ] **Q1 2024**: Lightspeed and Square adapters
-- [ ] **Q2 2024**: BigCommerce and WooCommerce adapters  
-- [ ] **Q3 2024**: Advanced analytics and forecasting
-- [ ] **Q4 2024**: Mobile app for inventory management
+Proprietary - RepOrder
 
 ---
 
-**Built with ❤️ for modern retail operations**
+**🚀 Built for modern retail operations**
