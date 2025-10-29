@@ -38,11 +38,7 @@ services:
           name: reporder-redis
           property: port
       - key: REDIS_PASSWORD
-        fromService:
-          type: redis
-          name: reporder-redis
-          property: connectionString
-          envVarKey: REDIS_PASSWORD
+        sync: false  # Set manually from Redis dashboard after creation
 
   # Redis for BullMQ queues
   - type: redis
