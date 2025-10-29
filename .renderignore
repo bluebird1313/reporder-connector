@@ -1,0 +1,39 @@
+# Files to ignore during Render deployment
+
+# Development
+.env.local
+.env.development
+
+# Testing
+*.test.ts
+*.spec.ts
+__tests__/
+coverage/
+
+# Documentation (optional, remove if you want docs deployed)
+*.md
+!README.md
+
+# Development tools
+.vscode/
+.idea/
+.cursor/
+
+# Supabase local
+supabase/.temp/
+supabase/functions/
+
+# Git
+.git/
+.gitignore
+
+# CI/CD (not needed on Render)
+.github/
+infra/
+
+# Context pack (development docs)
+context-pack/
+
+# Apps (if not deploying frontend to same service)
+apps/
+
