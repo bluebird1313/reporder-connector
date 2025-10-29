@@ -1,0 +1,472 @@
+# Shopify GraphQL queries for product operations
+
+# Get all products with variants and inventory information
+query getProducts($first: Int = 50, $after: String, $query: String) {
+  products(first: $first, after: $after, query: $query) {
+    edges {
+      node {
+        id
+        title
+        handle
+        description
+        vendor
+        productType
+        status
+        createdAt
+        updatedAt
+        publishedAt
+        tags
+        variants(first: 100) {
+          edges {
+            node {
+              id
+              title
+              sku
+              barcode
+              price
+              compareAtPrice
+              inventoryPolicy
+              inventoryManagement
+              inventoryQuantity
+              inventoryItem {
+                id
+                sku
+                tracked
+                inventoryLevels(first: 50) {
+                  edges {
+                    node {
+                      id
+                      available
+                      location {
+                        id
+                        name
+                      }
+                      updatedAt
+                    }
+                  }
+                }
+              }
+              createdAt
+              updatedAt
+            }
+          }
+        }
+        options {
+          id
+          name
+          values
+          position
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      hasPreviousPage
+      startCursor
+      endCursor
+    }
+  }
+}
+
+# Get a single product with full details
+query getProduct($id: ID!) {
+  product(id: $id) {
+    id
+    title
+    handle
+    description
+    descriptionHtml
+    vendor
+    productType
+    status
+    createdAt
+    updatedAt
+    publishedAt
+    tags
+    templateSuffix
+    giftCardTemplateSuffix
+    isGiftCard
+    requiresSellingPlan
+    variants(first: 100) {
+      edges {
+        node {
+          id
+          title
+          sku
+          barcode
+          price
+          compareAtPrice
+          inventoryPolicy
+          inventoryManagement
+          inventoryQuantity
+          weight
+          weightUnit
+          requiresShipping
+          taxable
+          taxCode
+          position
+          inventoryItem {
+            id
+            sku
+            tracked
+            requiresShipping
+            inventoryLevels(first: 50) {
+              edges {
+                node {
+                  id
+                  available
+                  incoming
+                  committed
+                  onHand
+                  location {
+                    id
+                    name
+                    isActive
+                  }
+                  updatedAt
+                }
+              }
+            }
+          }
+          selectedOptions {
+            name
+            value
+          }
+          createdAt
+          updatedAt
+        }
+      }
+    }
+    options {
+      id
+      name
+      values
+      position
+    }
+    images(first: 10) {
+      edges {
+        node {
+          id
+          altText
+          width
+          height
+          url
+        }
+      }
+    }
+    featuredImage {
+      id
+      altText
+      width
+      height
+      url
+    }
+    seo {
+      title
+      description
+    }
+  }
+}
+
+# Get products by specific criteria (e.g., updated after a timestamp)
+query getUpdatedProducts($updatedAt: DateTime!, $first: Int = 50, $after: String) {
+  products(first: $first, after: $after, query: "updated_at:>${updatedAt}") {
+    edges {
+      node {
+        id
+        title
+        handle
+        vendor
+        productType
+        status
+        updatedAt
+        variants(first: 100) {
+          edges {
+            node {
+              id
+              title
+              sku
+              barcode
+              updatedAt
+              inventoryItem {
+                id
+                inventoryLevels(first: 50) {
+                  edges {
+                    node {
+                      available
+                      location {
+                        id
+                        name
+                      }
+                      updatedAt
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+
+# Get product variants by inventory item IDs
+query getVariantsByInventoryItems($inventoryItemIds: [ID!]!) {
+  nodes(ids: $inventoryItemIds) {
+    ... on InventoryItem {
+      id
+      sku
+      tracked
+      variant {
+        id
+        title
+        sku
+        barcode
+        price
+        inventoryPolicy
+        inventoryManagement
+        product {
+          id
+          title
+          handle
+          vendor
+          productType
+          status
+        }
+      }
+    }
+  }
+}
+
+# Get locations (for inventory context)
+query getLocations($first: Int = 50) {
+  locations(first: $first) {
+    edges {
+      node {
+        id
+        name
+        address {
+          formatted
+          address1
+          address2
+          city
+          province
+          country
+          zip
+        }
+        isActive
+        shipsInventory
+        fulfillsOnlineOrders
+        hasActiveInventory
+        createdAt
+        updatedAt
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+
+# Get location details
+query getLocation($id: ID!) {
+  location(id: $id) {
+    id
+    name
+    address {
+      formatted
+      address1
+      address2
+      city
+      province
+      country
+      zip
+      countryCodeV2
+      provinceCode
+      latitude
+      longitude
+    }
+    isActive
+    shipsInventory
+    fulfillsOnlineOrders
+    hasActiveInventory
+    inventoryLevels(first: 250) {
+      edges {
+        node {
+          id
+          available
+          incoming
+          committed
+          onHand
+          inventoryItem {
+            id
+            sku
+            variant {
+              id
+              title
+              sku
+              product {
+                id
+                title
+              }
+            }
+          }
+          updatedAt
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+    createdAt
+    updatedAt
+  }
+}
+
+# Search products by title, SKU, or other fields
+query searchProducts($query: String!, $first: Int = 50, $after: String) {
+  products(first: $first, after: $after, query: $query) {
+    edges {
+      node {
+        id
+        title
+        handle
+        vendor
+        productType
+        status
+        variants(first: 10) {
+          edges {
+            node {
+              id
+              title
+              sku
+              barcode
+              inventoryItem {
+                id
+                inventoryLevels(first: 5) {
+                  edges {
+                    node {
+                      available
+                      location {
+                        id
+                        name
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+
+# Get collection of products (if using collections for categorization)
+query getCollection($id: ID!, $first: Int = 50) {
+  collection(id: $id) {
+    id
+    title
+    handle
+    description
+    products(first: $first) {
+      edges {
+        node {
+          id
+          title
+          handle
+          variants(first: 10) {
+            edges {
+              node {
+                id
+                sku
+                inventoryItem {
+                  id
+                  inventoryLevels(first: 5) {
+                    edges {
+                      node {
+                        available
+                        location {
+                          id
+                          name
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+}
+
+# Webhook subscription mutations
+mutation createInventoryWebhook($topic: WebhookSubscriptionTopic!, $callbackUrl: URL!) {
+  webhookSubscriptionCreate(topic: $topic, webhookSubscription: {
+    callbackUrl: $callbackUrl
+    format: JSON
+  }) {
+    webhookSubscription {
+      id
+      callbackUrl
+      format  
+      topic
+      createdAt
+      updatedAt
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation createProductWebhook($topic: WebhookSubscriptionTopic!, $callbackUrl: URL!) {
+  webhookSubscriptionCreate(topic: $topic, webhookSubscription: {
+    callbackUrl: $callbackUrl
+    format: JSON
+  }) {
+    webhookSubscription {
+      id
+      callbackUrl
+      format
+      topic
+      createdAt
+      updatedAt
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+# Delete webhook subscription
+mutation deleteWebhook($id: ID!) {
+  webhookSubscriptionDelete(id: $id) {
+    deletedWebhookSubscriptionId
+    userErrors {
+      field
+      message
+    }
+  }
+}

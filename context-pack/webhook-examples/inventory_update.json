@@ -1,0 +1,39 @@
+{
+  "shopify": {
+    "inventory_item_id": 39072856,
+    "location_id": 905684977,
+    "available": 15,
+    "updated_at": "2023-10-27T12:34:56-04:00"
+  },
+  "lightspeed": {
+    "event": "inventory.updated",
+    "account_id": "12345",
+    "item_id": "67890", 
+    "shop_id": "111",
+    "old_quantity": 5,
+    "new_quantity": 3,
+    "timestamp": "2023-10-27T12:34:56-04:00"
+  },
+  "square": {
+    "merchant_id": "MLEFBHHSJGVHD6JF3DMA5Z8Q",
+    "type": "inventory.count.updated", 
+    "event_id": "ac3ac95b-f97d-458c-a6bc-5d67c8616b3c",
+    "created_at": "2023-10-27T12:34:56.789Z",
+    "data": {
+      "type": "inventory",
+      "id": "11ea-4f55-afe0-bc218cd12345",
+      "object": {
+        "inventory_counts": [
+          {
+            "catalog_object_id": "W62UWFY35CWMYGVWK6TWJDNI",
+            "catalog_object_type": "ITEM_VARIATION",
+            "state": "IN_STOCK",
+            "location_id": "L88917AVBK2S5",
+            "quantity": "53",
+            "calculated_at": "2023-10-27T12:34:56.123Z"
+          }
+        ]
+      }
+    }
+  }
+}

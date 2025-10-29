@@ -1,0 +1,277 @@
+# Shopify GraphQL queries for inventory operations
+
+# Get inventory levels for a specific inventory item across all locations
+query getInventoryLevels($inventoryItemId: ID!, $first: Int = 50) {
+  inventoryItem(id: $inventoryItemId) {
+    id
+    sku
+    tracked
+    requiresShipping
+    inventoryLevels(first: $first) {
+      edges {
+        node {
+          id
+          available
+          incoming
+          committed
+          onHand
+          location {
+            id
+            name
+            isActive
+          }
+          updatedAt
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+}
+
+# Get inventory levels for multiple inventory items
+query getBulkInventoryLevels($inventoryItemIds: [ID!]!, $locationIds: [ID!]!) {
+  inventoryLevels(inventoryItemIds: $inventoryItemIds, locationIds: $locationIds, first: 250) {
+    edges {
+      node {
+        id
+        available
+        incoming
+        committed
+        onHand
+        inventoryItem {
+          id
+          sku
+          variant {
+            id
+            title
+            product {
+              id
+              title
+            }
+          }
+        }
+        location {
+          id
+          name
+        }
+        updatedAt
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+
+# Get inventory history for a specific item
+query getInventoryHistory($inventoryItemId: ID!, $first: Int = 50) {
+  inventoryItem(id: $inventoryItemId) {
+    id
+    inventoryHistoryUrl
+    inventoryLevels(first: 1) {
+      edges {
+        node {
+          available
+          location {
+            id
+            name
+          }
+          updatedAt
+        }
+      }
+    }
+  }
+}
+
+# Bulk query for inventory levels across locations with pagination
+query getBulkInventoryWithPagination($first: Int = 250, $after: String, $query: String) {
+  inventoryLevels(first: $first, after: $after, query: $query) {
+    edges {
+      node {
+        id
+        available
+        incoming
+        committed
+        onHand
+        inventoryItem {
+          id
+          sku
+          tracked
+          variant {
+            id
+            title
+            sku
+            barcode
+            product {
+              id
+              title
+              handle
+            }
+          }
+        }
+        location {
+          id
+          name
+          address {
+            formatted
+          }
+          isActive
+        }
+        updatedAt
+      }
+    }
+    pageInfo {
+      hasNextPage
+      hasPreviousPage
+      startCursor
+      endCursor
+    }
+  }
+}
+
+# Get low stock inventory items
+query getLowStockItems($locationId: ID!, $threshold: Int = 5) {
+  location(id: $locationId) {
+    id
+    name
+    inventoryLevels(first: 250, query: "available:<${threshold}") {
+      edges {
+        node {
+          id
+          available
+          inventoryItem {
+            id
+            sku
+            variant {
+              id
+              title
+              sku
+              product {
+                id
+                title
+              }
+            }
+          }
+          updatedAt
+        }
+      }
+    }
+  }
+}
+
+# Get out of stock inventory items
+query getOutOfStockItems($locationId: ID!) {
+  location(id: $locationId) {
+    id
+    name
+    inventoryLevels(first: 250, query: "available:0") {
+      edges {
+        node {
+          id
+          available
+          inventoryItem {
+            id
+            sku
+            variant {
+              id
+              title
+              sku
+              product {
+                id
+                title
+              }
+            }
+          }
+          updatedAt
+        }
+      }
+    }
+  }
+}
+
+# Mutation to adjust inventory (for testing purposes)
+mutation inventoryAdjustQuantities($input: InventoryAdjustQuantitiesInput!) {
+  inventoryAdjustQuantities(input: $input) {
+    inventoryAdjustmentGroup {
+      id
+      reason
+      referenceDocumentUri
+      app {
+        id
+      }
+      changes {
+        name
+        delta
+        quantityAfterChange
+        item {
+          id
+          sku
+        }
+        location {
+          id
+          name
+        }
+      }
+      createdAt
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+# Get inventory item details with variant information
+query getInventoryItemDetails($inventoryItemId: ID!) {
+  inventoryItem(id: $inventoryItemId) {
+    id
+    sku
+    tracked
+    requiresShipping
+    countryCodeOfOrigin
+    provinceCodeOfOrigin
+    harmonizedSystemCode
+    countryHarmonizedSystemCodes {
+      countryCode
+      harmonizedSystemCode
+    }
+    variant {
+      id
+      title
+      sku
+      barcode
+      price
+      compareAtPrice
+      inventoryPolicy
+      inventoryManagement
+      product {
+        id
+        title
+        handle
+        vendor
+        productType
+      }
+    }
+    inventoryLevels(first: 50) {
+      edges {
+        node {
+          id
+          available
+          incoming
+          committed
+          onHand
+          location {
+            id
+            name
+            isActive
+          }
+          updatedAt
+        }
+      }
+    }
+  }
+}
