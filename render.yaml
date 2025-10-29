@@ -5,8 +5,8 @@ services:
     env: node
     region: oregon
     plan: free  # Change to 'starter' or higher for production
-    buildCommand: npm install && npm run build --workspace=services/api
-    startCommand: npm run start --workspace=services/api
+    buildCommand: npm install && cd services/api && npm install && npm run build
+    startCommand: cd services/api && npm start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV

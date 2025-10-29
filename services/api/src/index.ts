@@ -5,6 +5,7 @@ import { errorHandler } from './middleware/errorHandler'
 import healthRouter from './api/routes/health'
 import connectionsRouter from './api/routes/connections'
 import syncRouter from './api/routes/sync'
+import shopifyRouter from './api/routes/shopify'
 import logger from './lib/logger'
 
 // Load environment variables
@@ -21,6 +22,7 @@ app.use(corsMiddleware)
 app.use('/', healthRouter)
 app.use('/api/connections', connectionsRouter)
 app.use('/api/sync', syncRouter)
+app.use('/api/shopify', shopifyRouter)
 
 // Error handling
 app.use(errorHandler)
