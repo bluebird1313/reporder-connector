@@ -227,7 +227,7 @@ router.get('/callback', async (req: Request, res: Response) => {
         throw updateError
       }
 
-      logger.info('Updated existing Shopify shop', {
+      logger.info('✅ Updated existing Shopify shop in database', {
         shopId: existingShop.id,
         shop: shopDomain
       })
@@ -253,16 +253,25 @@ router.get('/callback', async (req: Request, res: Response) => {
         throw insertError
       }
 
-      logger.info('Created new Shopify shop', {
+      logger.info('✅ Created new Shopify shop in database', {
         shopId: newShop?.id,
         shop: shopDomain
       })
     }
 
-    // Redirect back to Shopify admin or your app
-    // You can customize this redirect URL
-    const redirectTarget = process.env.SHOPIFY_SUCCESS_REDIRECT || `https://${shopDomain}/admin/apps`
-    res.redirect(redirectTarget)
+    // Success page with database confirmation
+    res.send(`
+      <html>
+        <head><title>OAuth Success</title></head>
+        <body style="font-family: Arial; padding: 50px; text-align: center;">
+          <h1>✅ OAuth Connection Successful!</h1>
+          <p><strong>Shop:</strong> ${shopDomain}</p>
+          <p><strong>Scopes:</strong> ${scopes}</p>
+          <p style="color: green; font-weight: bold;">Your Shopify store is now connected!</p>
+          <p><small>✅ Access token saved to database</small></p>
+        </body>
+      </html>
+    `)
   } catch (error) {
     logger.error('Error in OAuth callback:', error)
     res.status(500).json({

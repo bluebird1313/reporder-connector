@@ -181,3 +181,6 @@ fly.toml
 # Test artifacts
 test-results/
 playwright-report/
+
+# Script output with test data
+scripts/output/
