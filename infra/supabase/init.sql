@@ -155,6 +155,18 @@ CREATE TABLE public.webhook_events (
     INDEX idx_webhook_events_processing ON webhook_events(verified, processed_at, created_at) WHERE processed_at IS NULL
 );
 
+-- Sync logs table
+CREATE TABLE public.sync_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    connection_id UUID REFERENCES shops(id) ON DELETE CASCADE,
+    sync_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    error_message TEXT,
+    metadata JSONB DEFAULT '{}'
+);
+
 -- Audit log table - track all changes
 CREATE TABLE public.audit_log (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -184,6 +196,7 @@ CREATE INDEX idx_inventory_variant_location ON inventory_snapshots(variant_exter
 CREATE INDEX idx_incidents_shop_platform ON incidents(shop_id, platform);
 CREATE INDEX idx_incidents_variant_location ON incidents(variant_external_id, location_external_id);
 CREATE INDEX idx_webhook_events_shop_platform ON webhook_events(shop_id, platform);
+CREATE INDEX idx_sync_logs_connection ON sync_logs(connection_id);
 
 -- Create triggers for updated_at timestamps
 CREATE OR REPLACE FUNCTION update_updated_at_column()

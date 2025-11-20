@@ -197,67 +197,71 @@ router.get('/callback', async (req: Request, res: Response) => {
       scopes: scopes?.split(',')
     })
 
-    // Save access token to Supabase
-    const { data: existingShop, error: fetchError } = await supabase
-      .from('shops')
+    // 1. Find or Create Store
+    let storeId: string | null = null
+    
+    const { data: existingStore, error: storeError } = await supabase
+      .from('stores')
       .select('id')
-      .eq('platform', 'shopify')
-      .eq('shop_domain', shopDomain)
+      .eq('name', shopDomain) // Using shop domain as name for now
       .single()
-
-    if (fetchError && fetchError.code !== 'PGRST116') {
-      // PGRST116 is "not found" which is expected for new shops
-      logger.error('Error checking existing shop:', fetchError)
+    
+    if (existingStore) {
+      storeId = existingStore.id
+    } else {
+      // Create new store
+      const { data: newStore, error: createError } = await supabase
+        .from('stores')
+        .insert({ name: shopDomain })
+        .select('id')
+        .single()
+      
+      if (createError) {
+        throw createError
+      }
+      storeId = newStore.id
     }
 
-    if (existingShop) {
-      // Update existing shop
+    // 2. Save/Update Connection
+    // Check if connection exists
+    const { data: existingConnection } = await supabase
+      .from('platform_connections')
+      .select('id')
+      .eq('store_id', storeId)
+      .eq('platform', 'shopify')
+      .single()
+
+    if (existingConnection) {
+      // Update
       const { error: updateError } = await supabase
-        .from('shops')
+        .from('platform_connections')
         .update({
           access_token: accessToken,
           scopes: scopes?.split(','),
-          status: 'active',
+          shop_domain: shopDomain,
+          is_active: true,
           updated_at: new Date().toISOString()
         })
-        .eq('id', existingShop.id)
-
-      if (updateError) {
-        logger.error('Error updating shop:', updateError)
-        throw updateError
-      }
-
-      logger.info('✅ Updated existing Shopify shop in database', {
-        shopId: existingShop.id,
-        shop: shopDomain
-      })
+        .eq('id', existingConnection.id)
+      
+      if (updateError) throw updateError
     } else {
-      // Create new shop
-      const { data: newShop, error: insertError } = await supabase
-        .from('shops')
+      // Insert
+       const { error: insertError } = await supabase
+        .from('platform_connections')
         .insert({
+          store_id: storeId,
           platform: 'shopify',
           shop_domain: shopDomain,
           access_token: accessToken,
           scopes: scopes?.split(','),
-          status: 'active',
-          installed_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          is_active: true
         })
-        .select()
-        .single()
-
-      if (insertError) {
-        logger.error('Error creating shop:', insertError)
-        throw insertError
-      }
-
-      logger.info('✅ Created new Shopify shop in database', {
-        shopId: newShop?.id,
-        shop: shopDomain
-      })
+      
+      if (insertError) throw insertError
     }
+
+    logger.info('✅ Shopify connection saved', { shop: shopDomain })
 
     // Success page with database confirmation
     res.send(`
@@ -268,7 +272,13 @@ router.get('/callback', async (req: Request, res: Response) => {
           <p><strong>Shop:</strong> ${shopDomain}</p>
           <p><strong>Scopes:</strong> ${scopes}</p>
           <p style="color: green; font-weight: bold;">Your Shopify store is now connected!</p>
-          <p><small>✅ Access token saved to database</small></p>
+          <p><small>✅ Connection saved to database</small></p>
+          <script>
+            // Optional: Close window or redirect to dashboard
+            setTimeout(() => {
+              window.location.href = "https://reporder-dashboard.vercel.app"; 
+            }, 3000);
+          </script>
         </body>
       </html>
     `)
@@ -298,8 +308,8 @@ router.get('/verify', async (req: Request, res: Response) => {
     const normalizedShop = normalizeShopDomain(shop)
 
     const { data, error } = await supabase
-      .from('shops')
-      .select('id, shop_domain, status, scopes, installed_at')
+      .from('platform_connections')
+      .select('id, shop_domain, is_active, scopes, updated_at')
       .eq('platform', 'shopify')
       .eq('shop_domain', normalizedShop)
       .single()
@@ -314,9 +324,9 @@ router.get('/verify', async (req: Request, res: Response) => {
     res.json({
       connected: true,
       shop: data.shop_domain,
-      status: data.status,
+      status: data.is_active ? 'active' : 'inactive',
       scopes: data.scopes,
-      connectedAt: data.installed_at
+      connectedAt: data.updated_at
     })
   } catch (error) {
     logger.error('Error verifying connection:', error)
@@ -386,4 +396,3 @@ function validateHmac(query: any): boolean {
 }
 
 export default router
-

@@ -1,0 +1,14 @@
+{
+  "supabase": {
+    "command": "node",
+    "args": [
+      "C:\\Users\\tglas\\reporder-connector\\services\\mcp-server\\dist\\index.js"
+    ],
+    "env": {
+      "DATABASE_URL": "postgresql://postgres:MVIBiqwzqvhKoBJb@db.vxodzngaumgzudhtblcm.supabase.co:5432/postgres"
+    }
+  }
+}
+
+
+
