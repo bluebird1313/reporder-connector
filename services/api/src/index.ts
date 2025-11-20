@@ -1,7 +1,6 @@
 import express from 'express'
 import dotenv from 'dotenv'
 import path from 'path'
-import { auth } from 'express-openid-connect'
 import { corsMiddleware } from './middleware/cors'
 import { errorHandler } from './middleware/errorHandler'
 import healthRouter from './api/routes/health'
@@ -25,6 +24,7 @@ app.use(corsMiddleware)
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')))
 
+/*
 // Auth0 Configuration
 const config = {
   authRequired: false,
@@ -41,6 +41,7 @@ if (process.env.AUTH0_CLIENT_ID) {
 } else {
   logger.warn('Auth0 not configured. Auth routes will not be available.')
 }
+*/
 
 // Routes
 app.use('/', healthRouter)
@@ -51,6 +52,7 @@ app.use('/api/shopify', shopifyRouter)
 app.use('/api/user', userRouter)
 
 // UI Routes
+/*
 app.get('/dashboard', (req, res) => {
   if (req.oidc && req.oidc.isAuthenticated()) {
     res.sendFile(path.join(__dirname, 'public', 'dashboard.html'))
@@ -66,6 +68,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'))
   }
 })
+*/
 
 // Error handling
 app.use(errorHandler)

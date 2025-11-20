@@ -1,5 +1,5 @@
-import { supabase } from '../../../lib/supabase'
-import logger from '../../../lib/logger'
+import { supabase } from '../../lib/supabase'
+import logger from '../../lib/logger'
 import { shopifyGraphQL, PRODUCTS_QUERY, INVENTORY_LEVELS_QUERY } from './client'
 
 export async function syncShop(shopId: string) {

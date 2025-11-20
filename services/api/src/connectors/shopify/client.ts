@@ -1,4 +1,4 @@
-import logger from '../../../lib/logger'
+import logger from '../../lib/logger'
 
 // ============================================
 // Shopify GraphQL Client
@@ -21,7 +21,7 @@ export async function shopifyGraphQL(shopDomain: string, accessToken: string, qu
       throw new Error(`Shopify API error: ${response.status} ${response.statusText}`)
     }
 
-    const data = await response.json()
+    const data: any = await response.json()
     
     if (data.errors) {
       throw new Error(`GraphQL errors: ${JSON.stringify(data.errors, null, 2)}`)
