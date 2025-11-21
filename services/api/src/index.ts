@@ -69,28 +69,6 @@ app.use('/api/inventory', inventoryRouter)
 app.use('/api/shopify', shopifyRouter)
 app.use('/api/user', userRouter)
 
-// UI Routes
-/*
-app.get('/dashboard', (req, res) => {
-  if (req.oidc && req.oidc.isAuthenticated()) {
-    res.sendFile(path.join(__dirname, 'public', 'dashboard.html'))
-  } else {
-    res.redirect('/login')
-  }
-})
-
-app.get('/', (req, res) => {
-  if (req.oidc && req.oidc.isAuthenticated()) {
-    res.redirect('/dashboard')
-  } else {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'))
-  }
-})
-*/
-
-// Error handling
-app.use(errorHandler)
-
 app.get('/api/test-db', async (req, res) => {
   try {
     const { supabase } = require('./lib/supabase')
@@ -122,6 +100,9 @@ app.get('/api/test-db', async (req, res) => {
     })
   }
 })
+
+// Error handling
+app.use(errorHandler)
 
 // Start server
 const server = app.listen(PORT, () => {
