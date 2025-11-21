@@ -2,93 +2,92 @@ import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 import { shopifyGraphQL, PRODUCTS_QUERY, INVENTORY_LEVELS_QUERY } from './client'
 
-export async function syncShop(shopId: string) {
-  // 1. Get shop credentials
-  const { data: shop, error } = await supabase
-    .from('shops')
-    .select('*')
-    .eq('id', shopId)
+interface ShopifyConnection {
+  id: string
+  platform: string
+  shop_domain: string
+  access_token: string
+}
+
+export async function syncShop(connectionId: string) {
+  const { data: connection, error } = await supabase
+    .from('platform_connections')
+    .select('id, platform, shop_domain, access_token')
+    .eq('id', connectionId)
     .single()
 
-  if (error || !shop) throw new Error('Shop not found')
+  if (error || !connection) {
+    throw new Error('Platform connection not found')
+  }
 
-  logger.info(`Starting sync for shop: ${shop.shop_domain}`)
+  if (connection.platform !== 'shopify') {
+    throw new Error('Sync only implemented for Shopify connections')
+  }
+
+  logger.info(`Starting sync for Shopify store: ${connection.shop_domain}`)
 
   try {
-    // 2. Sync Products
-    await syncProducts(shop)
-    
-    // 3. Update last sync time
-    await supabase
-      .from('shops')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('id', shopId)
+    await syncProducts(connection)
 
-    logger.info(`Sync completed for shop: ${shop.shop_domain}`)
+    await supabase
+      .from('platform_connections')
+      .update({ last_sync_at: new Date().toISOString() })
+      .eq('id', connectionId)
+
+    logger.info(`Sync completed for Shopify store: ${connection.shop_domain}`)
   } catch (err) {
-    logger.error(`Sync failed for shop: ${shop.shop_domain}`, err)
+    logger.error(`Sync failed for Shopify store: ${connection.shop_domain}`, err)
     throw err
   }
 }
 
-async function syncProducts(shop: any) {
+async function syncProducts(connection: ShopifyConnection) {
   let hasNextPage = true
   let cursor = null
 
   while (hasNextPage) {
-    const data: any = await shopifyGraphQL(shop.shop_domain, shop.access_token, PRODUCTS_QUERY, { first: 10, cursor })
+    const data: any = await shopifyGraphQL(
+      connection.shop_domain,
+      connection.access_token,
+      PRODUCTS_QUERY,
+      { first: 10, cursor }
+    )
     const products = data.products.edges.map((e: any) => e.node)
 
     for (const p of products) {
-      // Upsert Product
-      const { data: prodData, error: prodError } = await supabase
-        .from('products')
-        .upsert({
-          platform: 'shopify',
-          shop_id: shop.id,
-          external_id: p.id,
-          title: p.title,
-          handle: p.handle,
-          status: p.status.toLowerCase(),
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'platform,shop_id,external_id' })
-        .select()
-        .single()
-
-      if (prodError) {
-        logger.error('Error upserting product', { error: prodError, product: p.title })
-        continue
-      }
-
-      // Upsert Variants
+      // Upsert Variants as products in our simplified schema
       for (const vEdge of p.variants.edges) {
         const v = vEdge.node
-        
-        // Upsert Variant
-        const { data: varData, error: varError } = await supabase
-          .from('variants')
-          .upsert({
-            platform: 'shopify',
-            shop_id: shop.id,
-            product_id: prodData.id,
-            external_id: v.id,
-            external_product_id: p.id,
-            title: v.title,
-            sku: v.sku,
-            price: v.price,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'platform,shop_id,external_id' })
+
+        const sku = v.sku || v.id
+        const name =
+          v.title && v.title !== 'Default Title'
+            ? `${p.title} - ${v.title}`
+            : p.title
+
+        const { data: productRow, error: productError } = await supabase
+          .from('products')
+          .upsert(
+            {
+              sku,
+              name,
+              brand: p.vendor || 'Shopify',
+              default_min_stock: 0,
+              updated_at: new Date().toISOString()
+            },
+            { onConflict: 'sku' }
+          )
           .select()
           .single()
 
-        if (varError) {
-           logger.error('Error upserting variant', { error: varError, variant: v.title })
-           continue
+        if (productError || !productRow) {
+          logger.error('Error upserting product', { error: productError, product: name })
+          continue
         }
 
         // Sync Inventory for this variant
         if (v.inventoryItem && v.inventoryItem.id) {
-           await syncInventory(shop, v.inventoryItem.id, v.id)
+          await syncInventory(connection, productRow.id, v.inventoryItem.id)
         }
       }
     }
@@ -98,8 +97,13 @@ async function syncProducts(shop: any) {
   }
 }
 
-async function syncInventory(shop: any, inventoryItemId: string, variantExternalId: string) {
-  const data: any = await shopifyGraphQL(shop.shop_domain, shop.access_token, INVENTORY_LEVELS_QUERY, { inventoryItemId, first: 10 })
+async function syncInventory(connection: ShopifyConnection, productId: string, inventoryItemId: string) {
+  const data: any = await shopifyGraphQL(
+    connection.shop_domain,
+    connection.access_token,
+    INVENTORY_LEVELS_QUERY,
+    { inventoryItemId, first: 10 }
+  )
   
   // Ensure we have inventory item data
   if (!data.inventoryItem || !data.inventoryItem.inventoryLevels) return
@@ -107,30 +111,33 @@ async function syncInventory(shop: any, inventoryItemId: string, variantExternal
   const levels = data.inventoryItem.inventoryLevels.edges.map((e: any) => e.node)
 
   for (const level of levels) {
-    // We need to ensure the location exists in our DB first
-    // For simplicity, we'll do a quick upsert of the location
-    await supabase.from('locations').upsert({
-      platform: 'shopify',
-      shop_id: shop.id,
-      external_id: level.location.id,
-      name: level.location.name,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'platform,shop_id,external_id' })
-
     const available = level.quantities.find((q: any) => q.name === 'available')
     const quantity = available ? available.quantity : 0
+    const locationName = level.location?.name || 'Unknown Location'
 
-    // Upsert Inventory Snapshot
-    await supabase.from('inventory_snapshots').upsert({
-      platform: 'shopify',
-      shop_id: shop.id,
-      variant_external_id: variantExternalId,
-      location_external_id: level.location.id,
-      quantity: quantity,
-      last_updated_at: new Date().toISOString()
-    }, { onConflict: 'platform,shop_id,variant_external_id,location_external_id' })
+    // Check if we already have an inventory level row for this product + location
+    const { data: existingLevel } = await supabase
+      .from('inventory_levels')
+      .select('id')
+      .eq('product_id', productId)
+      .eq('location_name', locationName)
+      .maybeSingle()
+
+    if (existingLevel) {
+      await supabase
+        .from('inventory_levels')
+        .update({
+          quantity,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingLevel.id)
+    } else {
+      await supabase.from('inventory_levels').insert({
+        product_id: productId,
+        location_name: locationName,
+        quantity,
+        updated_at: new Date().toISOString()
+      })
+    }
   }
 }
-
-
-

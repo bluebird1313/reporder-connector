@@ -28,28 +28,29 @@ router.post('/trigger', async (req, res, next) => {
   try {
     const { connectionId, syncType } = req.body
 
-    let shopId = connectionId
+    let activeConnectionId = connectionId
 
-    // If no connectionId provided, find the first active shop
-    if (!shopId) {
-       const { data: shop } = await supabase
-         .from('shops')
-         .select('id')
-         .limit(1)
-         .single()
-       
-       if (shop) {
-         shopId = shop.id
-       } else {
-         return res.status(400).json({ error: 'No shops connected' })
-       }
+    // If no connectionId provided, find the first active connection
+    if (!activeConnectionId) {
+      const { data: connection } = await supabase
+        .from('platform_connections')
+        .select('id')
+        .eq('is_active', true)
+        .limit(1)
+        .single()
+
+      if (connection) {
+        activeConnectionId = connection.id
+      } else {
+        return res.status(400).json({ error: 'No active platform connections found' })
+      }
     }
 
     // Create sync log entry
     const { data: syncLog, error } = await supabase
       .from('sync_logs')
       .insert({
-        connection_id: shopId,
+        connection_id: activeConnectionId,
         sync_type: syncType || 'full',
         status: 'running',
         started_at: new Date().toISOString()
@@ -61,24 +62,30 @@ router.post('/trigger', async (req, res, next) => {
 
     // Trigger Sync asynchronously (fire and forget for response)
     // In production, use a queue (BullMQ, etc.)
-    syncShop(shopId)
+    syncShop(activeConnectionId)
       .then(async () => {
-         await supabase.from('sync_logs').update({ 
-           status: 'completed', 
-           completed_at: new Date().toISOString() 
-         }).eq('id', syncLog.id)
+        await supabase
+          .from('sync_logs')
+          .update({
+            status: 'completed',
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', syncLog.id)
       })
       .catch(async (err) => {
-         await supabase.from('sync_logs').update({ 
-           status: 'failed', 
-           error_message: err.message,
-           completed_at: new Date().toISOString() 
-         }).eq('id', syncLog.id)
+        await supabase
+          .from('sync_logs')
+          .update({
+            status: 'failed',
+            error_message: err.message,
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', syncLog.id)
       })
 
-    res.json({ 
+    res.json({
       message: 'Sync started',
-      syncLog 
+      syncLog
     })
   } catch (error) {
     logger.error('Error triggering sync:', error)
