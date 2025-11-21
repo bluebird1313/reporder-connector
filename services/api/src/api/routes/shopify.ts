@@ -200,16 +200,25 @@ router.get('/callback', async (req: Request, res: Response) => {
     // 1. Find or Create Store
     let storeId: string | null = null
     
+    logger.info('Attempting to find/create store in Supabase', { shop: shopDomain });
+
     const { data: existingStore, error: storeError } = await supabase
       .from('stores')
       .select('id')
       .eq('name', shopDomain) // Using shop domain as name for now
       .single()
     
+    if (storeError && storeError.code !== 'PGRST116') { // PGRST116 is "no rows found"
+        logger.error('Supabase Error finding store:', storeError);
+        throw new Error(`Database error finding store: ${storeError.message}`);
+    }
+
     if (existingStore) {
       storeId = existingStore.id
+      logger.info('Found existing store', { storeId });
     } else {
       // Create new store
+      logger.info('Creating new store', { name: shopDomain });
       const { data: newStore, error: createError } = await supabase
         .from('stores')
         .insert({ name: shopDomain })
@@ -217,9 +226,11 @@ router.get('/callback', async (req: Request, res: Response) => {
         .single()
       
       if (createError) {
-        throw createError
+        logger.error('Supabase Error creating store:', createError);
+        throw new Error(`Database error creating store: ${createError.message}`);
       }
       storeId = newStore.id
+      logger.info('Created new store', { storeId });
     }
 
     // 2. Save/Update Connection
@@ -233,6 +244,7 @@ router.get('/callback', async (req: Request, res: Response) => {
 
     if (existingConnection) {
       // Update
+      logger.info('Updating existing connection', { id: existingConnection.id });
       const { error: updateError } = await supabase
         .from('platform_connections')
         .update({
@@ -244,9 +256,13 @@ router.get('/callback', async (req: Request, res: Response) => {
         })
         .eq('id', existingConnection.id)
       
-      if (updateError) throw updateError
+      if (updateError) {
+         logger.error('Supabase Error updating connection:', updateError);
+         throw updateError;
+      }
     } else {
       // Insert
+       logger.info('Inserting new connection', { storeId });
        const { error: insertError } = await supabase
         .from('platform_connections')
         .insert({
@@ -258,7 +274,10 @@ router.get('/callback', async (req: Request, res: Response) => {
           is_active: true
         })
       
-      if (insertError) throw insertError
+      if (insertError) {
+        logger.error('Supabase Error inserting connection:', insertError);
+        throw insertError;
+      }
     }
 
     logger.info('✅ Shopify connection saved', { shop: shopDomain })
