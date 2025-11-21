@@ -44,6 +44,24 @@ if (process.env.AUTH0_CLIENT_ID) {
 */
 
 // Routes
+app.get('/', (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>RepOrder Connector</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+      </head>
+      <body style="font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 50px; line-height: 1.5;">
+        <h1>✅ RepOrder Connector is Running</h1>
+        <p>This is the backend service for RepOrder.</p>
+        <p>
+          <a href="/health" style="color: #008060; text-decoration: none; font-weight: bold;">Check Health Status &rarr;</a>
+        </p>
+      </body>
+    </html>
+  `)
+})
+
 app.use('/', healthRouter)
 app.use('/api/connections', connectionsRouter)
 app.use('/api/sync', syncRouter)
