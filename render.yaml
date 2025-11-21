@@ -1,7 +1,7 @@
 services:
   # Main API Service
   - type: web
-    name: reporder-api
+    name: reporder-connector
     env: node
     region: oregon
     plan: free  # Change to 'starter' or higher for production
@@ -30,19 +30,19 @@ services:
       - key: REDIS_HOST
         fromService:
           type: redis
-          name: reporder-redis
+          name: reporder-connector-redis
           property: host
       - key: REDIS_PORT
         fromService:
           type: redis
-          name: reporder-redis
+          name: reporder-connector-redis
           property: port
       - key: REDIS_PASSWORD
         sync: false  # Set manually from Redis dashboard after creation
 
   # Redis for BullMQ queues
   - type: redis
-    name: reporder-redis
+    name: reporder-connector-redis
     region: oregon
     plan: free  # Free tier includes 25MB storage
     maxmemoryPolicy: noeviction
