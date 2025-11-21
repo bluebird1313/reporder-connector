@@ -91,6 +91,38 @@ app.get('/', (req, res) => {
 // Error handling
 app.use(errorHandler)
 
+app.get('/api/test-db', async (req, res) => {
+  try {
+    const { supabase } = require('./lib/supabase')
+    const testName = `test-${Date.now()}`
+    
+    // Try to write
+    const { data, error } = await supabase
+      .from('stores')
+      .insert({ name: testName })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    res.json({ 
+      success: true, 
+      message: 'Wrote to DB successfully', 
+      data,
+      env: {
+        url: process.env.SUPABASE_URL,
+        keyPrefix: process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 10) + '...'
+      }
+    })
+  } catch (error: any) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message, 
+      details: error 
+    })
+  }
+})
+
 // Start server
 const server = app.listen(PORT, () => {
   logger.info(`🚀 Server running on port ${PORT}`)
