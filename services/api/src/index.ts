@@ -44,7 +44,33 @@ if (process.env.AUTH0_CLIENT_ID) {
 */
 
 // Routes
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
+  const shop = req.query.shop as string;
+
+  // If opened inside Shopify Admin, we get a 'shop' param
+  if (shop) {
+    try {
+      const { supabase } = require('./lib/supabase')
+      
+      // Check if we have a valid connection for this shop
+      const { data } = await supabase
+        .from('platform_connections')
+        .select('id')
+        .eq('shop_domain', shop)
+        .eq('is_active', true)
+        .single()
+
+      if (!data) {
+        // Not connected yet, or disconnected -> Force OAuth
+        logger.info(`Shop ${shop} not connected in DB, redirecting to OAuth`);
+        return res.redirect(`/api/shopify/auth?shop=${shop}`);
+      }
+    } catch (e) {
+      logger.error('Error checking shop connection:', e);
+      // Fallthrough to show status page if DB check fails
+    }
+  }
+
   res.send(`
     <html>
       <head>
