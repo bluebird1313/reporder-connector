@@ -293,10 +293,10 @@ router.get('/callback', async (req: Request, res: Response) => {
           <p style="color: green; font-weight: bold;">Your Shopify store is now connected!</p>
           <p><small>✅ Connection saved to database</small></p>
           <script>
-            // Optional: Close window or redirect to dashboard
+            // Redirect to the app root which will show the status
             setTimeout(() => {
-              window.location.href = "https://reporder-dashboard.vercel.app"; 
-            }, 3000);
+              window.location.href = "/?shop=${shopDomain}"; 
+            }, 2000);
           </script>
         </body>
       </html>
