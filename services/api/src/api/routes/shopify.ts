@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 import crypto from 'crypto'
+import { syncShop } from '../../connectors/shopify/sync'
 
 const router = Router()
 
@@ -234,6 +235,8 @@ router.get('/callback', async (req: Request, res: Response) => {
     }
 
     // 2. Save/Update Connection
+    let connectionId: string | null = null
+    
     // Check if connection exists
     const { data: existingConnection } = await supabase
       .from('platform_connections')
@@ -244,6 +247,7 @@ router.get('/callback', async (req: Request, res: Response) => {
 
     if (existingConnection) {
       // Update
+      connectionId = existingConnection.id
       logger.info('Updating existing connection', { id: existingConnection.id });
       const { error: updateError } = await supabase
         .from('platform_connections')
@@ -262,8 +266,8 @@ router.get('/callback', async (req: Request, res: Response) => {
       }
     } else {
       // Insert
-       logger.info('Inserting new connection', { storeId });
-       const { error: insertError } = await supabase
+      logger.info('Inserting new connection', { storeId });
+      const { data: newConnection, error: insertError } = await supabase
         .from('platform_connections')
         .insert({
           store_id: storeId,
@@ -273,30 +277,123 @@ router.get('/callback', async (req: Request, res: Response) => {
           scopes: scopes?.split(','),
           is_active: true
         })
+        .select('id')
+        .single()
       
       if (insertError) {
         logger.error('Supabase Error inserting connection:', insertError);
         throw insertError;
       }
+      connectionId = newConnection.id
     }
 
-    logger.info('✅ Shopify connection saved', { shop: shopDomain })
+    logger.info('✅ Shopify connection saved', { shop: shopDomain, connectionId })
 
-    // Success page with database confirmation
+    // 3. AUTO-SYNC: Trigger initial sync in the background
+    if (connectionId) {
+      logger.info('🔄 Starting automatic initial sync...', { connectionId })
+      
+      // Run sync in background (don't await - let it run async)
+      syncShop(connectionId)
+        .then((stats) => {
+          logger.info('✅ Initial sync completed', { shop: shopDomain, stats })
+        })
+        .catch((syncError) => {
+          logger.error('❌ Initial sync failed', { shop: shopDomain, error: syncError })
+        })
+    }
+
+    // Get the frontend URL for redirect
+    const frontendUrl = process.env.FRONTEND_URL || 'https://reporder-connector-web.vercel.app'
+
+    // Success page with auto-redirect to dashboard
     res.send(`
       <html>
-        <head><title>OAuth Success</title></head>
-        <body style="font-family: Arial; padding: 50px; text-align: center;">
-          <h1>✅ OAuth Connection Successful!</h1>
-          <p><strong>Shop:</strong> ${shopDomain}</p>
-          <p><strong>Scopes:</strong> ${scopes}</p>
-          <p style="color: green; font-weight: bold;">Your Shopify store is now connected!</p>
-          <p><small>✅ Connection saved to database</small></p>
+        <head>
+          <title>Connection Successful</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+              color: white;
+              min-height: 100vh;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              margin: 0;
+            }
+            .container {
+              text-align: center;
+              padding: 40px;
+              background: rgba(255,255,255,0.05);
+              border-radius: 16px;
+              border: 1px solid rgba(255,255,255,0.1);
+              max-width: 500px;
+            }
+            .success-icon {
+              font-size: 64px;
+              margin-bottom: 20px;
+            }
+            h1 {
+              margin: 0 0 10px 0;
+              font-size: 28px;
+            }
+            .shop-name {
+              color: #3b82f6;
+              font-weight: 600;
+            }
+            .status {
+              margin: 20px 0;
+              padding: 15px;
+              background: rgba(34, 197, 94, 0.1);
+              border: 1px solid rgba(34, 197, 94, 0.3);
+              border-radius: 8px;
+            }
+            .syncing {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 10px;
+              color: #fbbf24;
+            }
+            .spinner {
+              width: 20px;
+              height: 20px;
+              border: 2px solid rgba(251, 191, 36, 0.3);
+              border-top-color: #fbbf24;
+              border-radius: 50%;
+              animation: spin 1s linear infinite;
+            }
+            @keyframes spin {
+              to { transform: rotate(360deg); }
+            }
+            .redirect-msg {
+              color: #888;
+              font-size: 14px;
+              margin-top: 20px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="success-icon">✅</div>
+            <h1>Connection Successful!</h1>
+            <p>Store <span class="shop-name">${shopDomain}</span> is now connected.</p>
+            
+            <div class="status">
+              <div class="syncing">
+                <div class="spinner"></div>
+                <span>Syncing products & inventory...</span>
+              </div>
+            </div>
+            
+            <p class="redirect-msg">Redirecting to dashboard in 3 seconds...</p>
+          </div>
+          
           <script>
-            // Redirect to the app root which will show the status
             setTimeout(() => {
-              window.location.href = "/?shop=${shopDomain}"; 
-            }, 2000);
+              window.location.href = "${frontendUrl}/connections";
+            }, 3000);
           </script>
         </body>
       </html>
