@@ -9,6 +9,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Table,
   TableBody,
   TableCell,
@@ -26,7 +33,11 @@ import {
   Settings,
   ExternalLink,
   CheckCircle2,
-  FileText
+  FileText,
+  Tag,
+  Archive,
+  Eye,
+  EyeOff
 } from "lucide-react"
 import Link from "next/link"
 
@@ -50,6 +61,7 @@ interface Product {
   quantity: number
   threshold: number
   hasAlert: boolean
+  is_archived: boolean
 }
 
 interface Alert {
@@ -69,7 +81,10 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
   const [store, setStore] = useState<StoreDetail | null>(null)
   const [products, setProducts] = useState<Product[]>([])
   const [alerts, setAlerts] = useState<Alert[]>([])
+  const [brands, setBrands] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState("")
+  const [brandFilter, setBrandFilter] = useState("all")
+  const [showArchived, setShowArchived] = useState(false)
   const [activeTab, setActiveTab] = useState("all")
 
   useEffect(() => {
@@ -99,6 +114,7 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
           sku,
           brand,
           external_id,
+          is_archived,
           inventory_levels (
             quantity,
             low_stock_threshold
@@ -118,13 +134,19 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
           id: p.id,
           name: p.name,
           sku: p.sku,
-          brand: p.brand,
+          brand: p.brand || 'Unknown',
           external_id: p.external_id,
           quantity: inventory?.quantity || 0,
           threshold: inventory?.low_stock_threshold || 10,
-          hasAlert: openAlerts.length > 0
+          hasAlert: openAlerts.length > 0,
+          is_archived: p.is_archived || false
         }
       })
+
+      // Extract unique brands
+      const uniqueBrands = [...new Set(transformedProducts.map(p => p.brand).filter(Boolean))]
+      uniqueBrands.sort()
+      setBrands(uniqueBrands)
 
       setProducts(transformedProducts)
 
@@ -188,6 +210,23 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
     }
   }
 
+  async function toggleArchive(productId: string, currentArchived: boolean) {
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update({ is_archived: !currentArchived })
+        .eq('id', productId)
+
+      if (!error) {
+        setProducts(products.map(p => 
+          p.id === productId ? { ...p, is_archived: !currentArchived } : p
+        ))
+      }
+    } catch (error) {
+      console.error('Error toggling archive:', error)
+    }
+  }
+
   function formatDate(dateString: string | null) {
     if (!dateString) return 'Never'
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -205,20 +244,37 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
     return { label: 'In Stock', color: 'bg-green-500', variant: 'default' as const }
   }
 
-  // Filter products based on search and tab
+  // Filter products based on search, brand, archived, and tab
   const filteredProducts = products.filter(product => {
+    // Search filter
     const matchesSearch = !searchQuery || 
       product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchQuery.toLowerCase())
+      product.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.brand.toLowerCase().includes(searchQuery.toLowerCase())
     
+    // Brand filter
+    if (brandFilter !== "all" && product.brand !== brandFilter) {
+      return false
+    }
+
+    // Archived filter
+    if (!showArchived && product.is_archived) {
+      return false
+    }
+    
+    // Tab filter
     if (activeTab === 'low') {
       return matchesSearch && product.quantity <= product.threshold
+    }
+    if (activeTab === 'archived') {
+      return matchesSearch && product.is_archived
     }
     return matchesSearch
   })
 
-  const lowStockCount = products.filter(p => p.quantity <= p.threshold).length
-  const totalUnits = products.reduce((sum, p) => sum + p.quantity, 0)
+  const lowStockCount = products.filter(p => !p.is_archived && p.quantity <= p.threshold).length
+  const totalUnits = products.filter(p => !p.is_archived).reduce((sum, p) => sum + p.quantity, 0)
+  const archivedCount = products.filter(p => p.is_archived).length
 
   if (loading) {
     return (
@@ -291,7 +347,7 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
@@ -299,7 +355,7 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
                   <Package className="h-6 w-6 text-blue-500" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{products.length}</p>
+                  <p className="text-2xl font-bold">{products.filter(p => !p.is_archived).length}</p>
                   <p className="text-sm text-muted-foreground">Products</p>
                 </div>
               </div>
@@ -340,6 +396,19 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
                 <div>
                   <p className="text-2xl font-bold">{alerts.length}</p>
                   <p className="text-sm text-muted-foreground">Open Alerts</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-xl bg-slate-500/10">
+                  <Archive className="h-6 w-6 text-slate-500" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{archivedCount}</p>
+                  <p className="text-sm text-muted-foreground">Archived</p>
                 </div>
               </div>
             </CardContent>
@@ -387,26 +456,55 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
           <CardHeader>
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <CardTitle>Products</CardTitle>
-              <div className="flex gap-4">
-                <div className="relative w-64">
+              <div className="flex flex-wrap gap-2">
+                <div className="relative w-48">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search products..."
+                    placeholder="Search..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9"
                   />
                 </div>
+                <Select value={brandFilter} onValueChange={setBrandFilter}>
+                  <SelectTrigger className="w-[160px]">
+                    <Tag className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="All Brands" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Brands</SelectItem>
+                    {brands.map(brand => (
+                      <SelectItem key={brand} value={brand}>
+                        {brand}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant={showArchived ? "default" : "outline"}
+                  size="icon"
+                  onClick={() => setShowArchived(!showArchived)}
+                  title={showArchived ? "Hide archived" : "Show archived"}
+                >
+                  {showArchived ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                </Button>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="mb-4">
-                <TabsTrigger value="all">All Products ({products.length})</TabsTrigger>
+                <TabsTrigger value="all">
+                  All Products ({products.filter(p => !p.is_archived || showArchived).length})
+                </TabsTrigger>
                 <TabsTrigger value="low" className="text-orange-500">
                   Low Stock ({lowStockCount})
                 </TabsTrigger>
+                {archivedCount > 0 && (
+                  <TabsTrigger value="archived">
+                    Archived ({archivedCount})
+                  </TabsTrigger>
+                )}
               </TabsList>
               
               <TabsContent value={activeTab}>
@@ -415,29 +513,39 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
                     <TableHeader>
                       <TableRow>
                         <TableHead>Product</TableHead>
+                        <TableHead>Brand</TableHead>
                         <TableHead>SKU</TableHead>
                         <TableHead className="text-right">Quantity</TableHead>
                         <TableHead className="text-right">Threshold</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredProducts.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                            {searchQuery ? 'No matching products found.' : 'No products yet.'}
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                            {searchQuery || brandFilter !== "all" ? 'No matching products found.' : 'No products yet.'}
                           </TableCell>
                         </TableRow>
                       ) : (
                         filteredProducts.map(product => {
                           const status = getStockStatus(product.quantity, product.threshold)
                           return (
-                            <TableRow key={product.id}>
+                            <TableRow key={product.id} className={product.is_archived ? 'opacity-60' : ''}>
                               <TableCell>
-                                <div>
-                                  <p className="font-medium">{product.name}</p>
-                                  <p className="text-sm text-muted-foreground">{product.brand}</p>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">{product.name}</span>
+                                  {product.is_archived && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      <Archive className="h-3 w-3 mr-1" />
+                                      Archived
+                                    </Badge>
+                                  )}
                                 </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{product.brand}</Badge>
                               </TableCell>
                               <TableCell className="font-mono text-sm">{product.sku}</TableCell>
                               <TableCell className="text-right font-medium">
@@ -450,6 +558,16 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
                                 <Badge variant={status.variant}>
                                   {status.label}
                                 </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => toggleArchive(product.id, product.is_archived)}
+                                  title={product.is_archived ? "Restore" : "Archive"}
+                                >
+                                  {product.is_archived ? "Restore" : <Archive className="h-4 w-4" />}
+                                </Button>
                               </TableCell>
                             </TableRow>
                           )
@@ -466,4 +584,3 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
     </DashboardLayout>
   )
 }
-
