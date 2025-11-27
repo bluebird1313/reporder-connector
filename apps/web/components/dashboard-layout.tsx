@@ -4,8 +4,17 @@ import type React from "react"
 
 import { useState } from "react"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { 
   LayoutDashboard, 
   Package, 
@@ -15,7 +24,10 @@ import {
   Store,
   Bell,
   FileText,
-  ChevronRight
+  ChevronRight,
+  LogOut,
+  User,
+  Building2
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -67,6 +79,25 @@ const navigation = [
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { user, profile, signOut, loading } = useAuth()
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
+  // If not logged in, the auth provider will redirect
+  if (!user) {
+    return null
+  }
+
+  const userInitial = profile?.full_name?.charAt(0) || user?.email?.charAt(0) || 'U'
+  const userName = profile?.full_name || user?.email || 'User'
+  const orgName = profile?.organization?.name || 'No Organization'
 
   return (
     <div className="min-h-screen bg-background">
@@ -101,6 +132,16 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <X className="h-5 w-5" />
             </Button>
           </div>
+
+          {/* Organization badge */}
+          {profile?.organization && (
+            <div className="px-4 py-3 border-b border-border">
+              <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-muted/50 text-sm">
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+                <span className="truncate text-muted-foreground">{orgName}</span>
+              </div>
+            </div>
+          )}
 
           {/* Navigation */}
           <ScrollArea className="flex-1 py-6">
@@ -149,17 +190,47 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </nav>
           </ScrollArea>
 
-          {/* Footer */}
+          {/* User Menu */}
           <div className="border-t border-border p-4">
-            <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-muted/50">
-              <div className="h-9 w-9 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm">
-                A
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">Agency Admin</p>
-                <p className="text-xs text-muted-foreground truncate">Manage all stores</p>
-              </div>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-3 px-3 py-2 rounded-xl bg-muted/50 hover:bg-muted transition-colors w-full text-left">
+                  <div className="h-9 w-9 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm uppercase">
+                    {userInitial}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{userName}</p>
+                    <p className="text-xs text-muted-foreground truncate">{profile?.role || 'Member'}</p>
+                  </div>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col">
+                    <span>{userName}</span>
+                    <span className="text-xs font-normal text-muted-foreground">{user?.email}</span>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/settings" className="cursor-pointer">
+                    <User className="h-4 w-4 mr-2" />
+                    Profile Settings
+                  </Link>
+                </DropdownMenuItem>
+                {profile?.organization && (
+                  <DropdownMenuItem disabled>
+                    <Building2 className="h-4 w-4 mr-2" />
+                    {orgName}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={signOut} className="text-red-500 focus:text-red-500 cursor-pointer">
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </aside>
