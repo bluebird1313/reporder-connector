@@ -22,12 +22,12 @@ import {
   ArrowLeft,
   Store, 
   Package,
-  AlertTriangle,
   Search,
   Send,
   Save,
   Plus,
-  Minus
+  Minus,
+  Tag
 } from "lucide-react"
 import Link from "next/link"
 
@@ -57,8 +57,10 @@ function NewRequestContent() {
   const [connections, setConnections] = useState<Connection[]>([])
   const [selectedStore, setSelectedStore] = useState<string>(preselectedStore || "")
   const [products, setProducts] = useState<LowStockProduct[]>([])
+  const [brands, setBrands] = useState<string[]>([])
   const [notes, setNotes] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
+  const [brandFilter, setBrandFilter] = useState("all")
 
   useEffect(() => {
     fetchConnections()
@@ -93,6 +95,7 @@ function NewRequestContent() {
   async function fetchLowStockProducts(connectionId: string) {
     try {
       setLoading(true)
+      setBrandFilter("all") // Reset brand filter when changing store
 
       // Fetch products with low stock alerts
       const { data: alertsData } = await supabase
@@ -106,23 +109,32 @@ function NewRequestContent() {
             id,
             name,
             sku,
-            brand
+            brand,
+            is_archived
           )
         `)
         .eq('connection_id', connectionId)
         .eq('status', 'open')
         .order('quantity', { ascending: true })
 
-      const transformedProducts: LowStockProduct[] = (alertsData || []).map((alert: any) => ({
+      // Filter out archived products
+      const filteredAlerts = (alertsData || []).filter((alert: any) => !alert.products?.is_archived)
+
+      const transformedProducts: LowStockProduct[] = filteredAlerts.map((alert: any) => ({
         id: alert.products?.id || alert.product_id,
         name: alert.products?.name || 'Unknown',
         sku: alert.products?.sku || 'N/A',
-        brand: alert.products?.brand || '',
+        brand: alert.products?.brand || 'Unknown',
         quantity: alert.quantity,
         threshold: alert.threshold,
         selected: true, // Select all by default
         reorderQty: Math.max(alert.threshold * 2 - alert.quantity, alert.threshold) // Suggest reorder to 2x threshold
       }))
+
+      // Extract unique brands
+      const uniqueBrands = [...new Set(transformedProducts.map(p => p.brand).filter(Boolean))]
+      uniqueBrands.sort()
+      setBrands(uniqueBrands)
 
       setProducts(transformedProducts)
     } catch (error) {
@@ -144,9 +156,21 @@ function NewRequestContent() {
     ))
   }
 
-  function selectAll() {
-    const allSelected = products.every(p => p.selected)
-    setProducts(products.map(p => ({ ...p, selected: !allSelected })))
+  function selectAllFiltered() {
+    const allFilteredSelected = filteredProducts.every(p => p.selected)
+    const filteredIds = new Set(filteredProducts.map(p => p.id))
+    setProducts(products.map(p => 
+      filteredIds.has(p.id) ? { ...p, selected: !allFilteredSelected } : p
+    ))
+  }
+
+  function selectOnlyBrand(brand: string) {
+    // Deselect all, then select only the specified brand
+    setProducts(products.map(p => ({
+      ...p,
+      selected: p.brand === brand
+    })))
+    setBrandFilter(brand)
   }
 
   async function handleSave(sendNow: boolean = false) {
@@ -201,12 +225,22 @@ function NewRequestContent() {
     }
   }
 
+  // Filter products based on search and brand
+  const filteredProducts = products.filter(p => {
+    // Search filter
+    const matchesSearch = !searchQuery || 
+      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.brand.toLowerCase().includes(searchQuery.toLowerCase())
+    
+    // Brand filter
+    const matchesBrand = brandFilter === "all" || p.brand === brandFilter
+
+    return matchesSearch && matchesBrand
+  })
+
   const selectedProducts = products.filter(p => p.selected)
-  const filteredProducts = products.filter(p => 
-    !searchQuery || 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.sku.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const selectedInView = filteredProducts.filter(p => p.selected)
 
   return (
     <DashboardLayout>
@@ -260,17 +294,30 @@ function NewRequestContent() {
         {selectedStore && (
           <Card>
             <CardHeader>
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Package className="h-4 w-4" />
-                    Low Stock Items
-                  </CardTitle>
-                  <CardDescription>
-                    {selectedProducts.length} of {products.length} items selected
-                  </CardDescription>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Package className="h-4 w-4" />
+                      Low Stock Items
+                    </CardTitle>
+                    <CardDescription>
+                      {selectedInView.length} of {filteredProducts.length} items selected
+                      {brandFilter !== "all" && ` (filtered by ${brandFilter})`}
+                      {selectedProducts.length !== selectedInView.length && (
+                        <span className="text-primary ml-1">
+                          • {selectedProducts.length} total selected
+                        </span>
+                      )}
+                    </CardDescription>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={selectAllFiltered}>
+                    {filteredProducts.every(p => p.selected) ? 'Deselect All' : 'Select All'}
+                  </Button>
                 </div>
-                <div className="flex gap-2">
+                
+                {/* Filters */}
+                <div className="flex flex-wrap gap-2">
                   <div className="relative w-48">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -280,10 +327,46 @@ function NewRequestContent() {
                       className="pl-9"
                     />
                   </div>
-                  <Button variant="outline" size="sm" onClick={selectAll}>
-                    {products.every(p => p.selected) ? 'Deselect All' : 'Select All'}
-                  </Button>
+                  <Select value={brandFilter} onValueChange={setBrandFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <Tag className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="All Brands" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Brands ({products.length})</SelectItem>
+                      {brands.map(brand => {
+                        const count = products.filter(p => p.brand === brand).length
+                        return (
+                          <SelectItem key={brand} value={brand}>
+                            {brand} ({count})
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
                 </div>
+
+                {/* Quick brand selection buttons */}
+                {brands.length > 1 && (
+                  <div className="flex flex-wrap gap-2">
+                    <span className="text-sm text-muted-foreground self-center">Quick select:</span>
+                    {brands.map(brand => {
+                      const count = products.filter(p => p.brand === brand).length
+                      const selectedCount = products.filter(p => p.brand === brand && p.selected).length
+                      return (
+                        <Button
+                          key={brand}
+                          variant={selectedCount === count ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => selectOnlyBrand(brand)}
+                          className="text-xs"
+                        >
+                          {brand} ({count})
+                        </Button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -296,10 +379,19 @@ function NewRequestContent() {
                   <div className="w-16 h-16 rounded-full bg-green-500/10 mx-auto flex items-center justify-center mb-4">
                     <Package className="h-8 w-8 text-green-500" />
                   </div>
-                  <h3 className="text-lg font-medium">No Low Stock Items</h3>
+                  <h3 className="text-lg font-medium">
+                    {brandFilter !== "all" ? `No ${brandFilter} Items` : 'No Low Stock Items'}
+                  </h3>
                   <p className="text-muted-foreground mt-1">
-                    This store has no products that need restocking.
+                    {brandFilter !== "all" 
+                      ? `No low stock items from ${brandFilter}. Try selecting a different brand.`
+                      : 'This store has no products that need restocking.'}
                   </p>
+                  {brandFilter !== "all" && (
+                    <Button variant="outline" className="mt-4" onClick={() => setBrandFilter("all")}>
+                      Show All Brands
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -327,13 +419,16 @@ function NewRequestContent() {
 
                       {/* Product info */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium truncate">{product.name}</span>
                           <Badge variant="outline" className="text-xs">
                             {product.sku}
                           </Badge>
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+                          <Tag className="h-3 w-3" />
+                          <span className="font-medium">{product.brand}</span>
+                          <span>•</span>
                           <span>Current: <strong className={product.quantity === 0 ? 'text-red-500' : 'text-orange-500'}>{product.quantity}</strong></span>
                           <span>•</span>
                           <span>Threshold: {product.threshold}</span>
@@ -407,6 +502,11 @@ function NewRequestContent() {
                 <div>
                   <p className="font-semibold">
                     {selectedProducts.length} items selected
+                    {brandFilter !== "all" && (
+                      <span className="font-normal text-muted-foreground ml-2">
+                        (from all brands)
+                      </span>
+                    )}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     Total reorder: {selectedProducts.reduce((sum, p) => sum + p.reorderQty, 0).toLocaleString()} units
@@ -451,4 +551,3 @@ export default function NewRequestPage() {
     </Suspense>
   )
 }
-
