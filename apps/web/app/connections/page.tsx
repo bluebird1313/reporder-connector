@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Plus, Settings, ExternalLink, RefreshCw } from "lucide-react"
+import { Plus, Settings, ExternalLink, RefreshCw, Trash2, AlertTriangle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 
 interface Connection {
@@ -25,6 +25,8 @@ export default function ConnectionsPage() {
   const [connections, setConnections] = useState<Connection[]>([])
   const [loading, setLoading] = useState(true)
   const [shopName, setShopName] = useState("")
+  const [disconnecting, setDisconnecting] = useState<string | null>(null)
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState<string | null>(null)
 
   useEffect(() => {
     fetchConnections()
@@ -56,6 +58,59 @@ export default function ConnectionsPage() {
     
     // Redirect to OAuth
     window.location.href = `${apiUrl}/api/shopify/auth?shop=${normalizedShop}`
+  }
+
+  async function handleDisconnect(connectionId: string, shopDomain: string) {
+    try {
+      setDisconnecting(connectionId)
+      
+      // Get the API URL
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3004'
+      
+      // Call the disconnect API endpoint
+      const response = await fetch(`${apiUrl}/api/connections/${connectionId}/disconnect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      if (!response.ok) {
+        // If API fails, try direct Supabase update as fallback
+        console.log('API disconnect failed, using direct update...')
+        
+        // Delete related data first
+        await supabase.from('alerts').delete().eq('connection_id', connectionId)
+        
+        // Get product IDs for this connection
+        const { data: products } = await supabase
+          .from('products')
+          .select('id')
+          .eq('connection_id', connectionId)
+        
+        if (products && products.length > 0) {
+          const productIds = products.map(p => p.id)
+          await supabase.from('inventory_levels').delete().in('product_id', productIds)
+          await supabase.from('products').delete().eq('connection_id', connectionId)
+        }
+        
+        // Finally delete the connection
+        const { error } = await supabase
+          .from('platform_connections')
+          .delete()
+          .eq('id', connectionId)
+        
+        if (error) throw error
+      }
+
+      // Refresh the connections list
+      await fetchConnections()
+      setShowDisconnectConfirm(null)
+      
+    } catch (error) {
+      console.error('Error disconnecting:', error)
+      alert('Failed to disconnect. Please try again.')
+    } finally {
+      setDisconnecting(null)
+    }
   }
 
   function formatDate(dateString: string) {
@@ -131,7 +186,7 @@ export default function ConnectionsPage() {
                   </Button>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  You'll be redirected to Shopify to authorize the connection.
+                  You will be redirected to Shopify to authorize the connection.
                 </p>
               </div>
             </CardContent>
@@ -208,8 +263,51 @@ export default function ConnectionsPage() {
                         <Button variant="ghost" size="icon" title="Settings">
                           <Settings className="h-4 w-4" />
                         </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          title="Disconnect"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => setShowDisconnectConfirm(connection.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
+
+                    {/* Disconnect Confirmation */}
+                    {showDisconnectConfirm === connection.id && (
+                      <div className="mt-4 p-4 bg-destructive/10 border border-destructive/30 rounded-lg">
+                        <div className="flex items-start gap-3">
+                          <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
+                          <div className="flex-1">
+                            <h4 className="font-medium text-destructive">Disconnect this store?</h4>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              This will remove the connection and delete all synced products and inventory data for <strong>{connection.shop_domain}</strong>. 
+                              You can reconnect the store anytime.
+                            </p>
+                            <div className="flex gap-2 mt-3">
+                              <Button 
+                                variant="destructive" 
+                                size="sm"
+                                onClick={() => handleDisconnect(connection.id, connection.shop_domain)}
+                                disabled={disconnecting === connection.id}
+                              >
+                                {disconnecting === connection.id ? 'Disconnecting...' : 'Yes, Disconnect'}
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => setShowDisconnectConfirm(null)}
+                                disabled={disconnecting === connection.id}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
