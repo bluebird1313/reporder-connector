@@ -9,7 +9,26 @@ interface ShopifyConnection {
   access_token: string
 }
 
-export async function syncShop(connectionId: string) {
+interface SyncStats {
+  productsProcessed: number
+  productsCreated: number
+  productsUpdated: number
+  inventoryUpdated: number
+  alertsCreated: number
+}
+
+const DEFAULT_LOW_STOCK_THRESHOLD = 10
+
+export async function syncShop(connectionId: string): Promise<SyncStats> {
+  const stats: SyncStats = {
+    productsProcessed: 0,
+    productsCreated: 0,
+    productsUpdated: 0,
+    inventoryUpdated: 0,
+    alertsCreated: 0
+  }
+
+  // Get the connection details
   const { data: connection, error } = await supabase
     .from('platform_connections')
     .select('id, platform, shop_domain, access_token')
@@ -24,120 +43,263 @@ export async function syncShop(connectionId: string) {
     throw new Error('Sync only implemented for Shopify connections')
   }
 
-  logger.info(`Starting sync for Shopify store: ${connection.shop_domain}`)
+  logger.info(`🚀 Starting sync for Shopify store: ${connection.shop_domain}`)
 
   try {
-    await syncProducts(connection)
+    // Sync all products and inventory
+    await syncProducts(connection, stats)
 
+    // Check for low stock alerts
+    await checkLowStockAlerts(connection.id, stats)
+
+    // Update last sync timestamp
     await supabase
       .from('platform_connections')
       .update({ last_sync_at: new Date().toISOString() })
       .eq('id', connectionId)
 
-    logger.info(`Sync completed for Shopify store: ${connection.shop_domain}`)
+    logger.info(`✅ Sync completed for ${connection.shop_domain}`, stats)
+    return stats
+
   } catch (err) {
-    logger.error(`Sync failed for Shopify store: ${connection.shop_domain}`, err)
+    logger.error(`❌ Sync failed for ${connection.shop_domain}`, err)
     throw err
   }
 }
 
-async function syncProducts(connection: ShopifyConnection) {
+async function syncProducts(connection: ShopifyConnection, stats: SyncStats) {
   let hasNextPage = true
   let cursor = null
 
   while (hasNextPage) {
+    // Fetch products from Shopify
     const data: any = await shopifyGraphQL(
       connection.shop_domain,
       connection.access_token,
       PRODUCTS_QUERY,
-      { first: 10, cursor }
+      { first: 25, cursor }
     )
+
     const products = data.products.edges.map((e: any) => e.node)
+    logger.info(`📦 Processing ${products.length} products...`)
 
-    for (const p of products) {
-      // Upsert Variants as products in our simplified schema
-      for (const vEdge of p.variants.edges) {
-        const v = vEdge.node
+    for (const product of products) {
+      // Process each variant as a product in our system
+      for (const variantEdge of product.variants.edges) {
+        const variant = variantEdge.node
+        stats.productsProcessed++
 
-        const sku = v.sku || v.id
-        const name =
-          v.title && v.title !== 'Default Title'
-            ? `${p.title} - ${v.title}`
-            : p.title
+        // Extract the numeric ID from Shopify's GID
+        const externalId = variant.id.replace('gid://shopify/ProductVariant/', '')
+        const sku = variant.sku || externalId
+        const name = variant.title && variant.title !== 'Default Title'
+          ? `${product.title} - ${variant.title}`
+          : product.title
 
-        const { data: productRow, error: productError } = await supabase
+        // Check if product already exists (by external_id or sku)
+        const { data: existingProduct } = await supabase
           .from('products')
-          .upsert(
-            {
+          .select('id')
+          .eq('connection_id', connection.id)
+          .or(`external_id.eq.${externalId},sku.eq.${sku}`)
+          .maybeSingle()
+
+        let productId: string
+
+        if (existingProduct) {
+          // Update existing product
+          const { error: updateError } = await supabase
+            .from('products')
+            .update({
               sku,
               name,
-              brand: p.vendor || 'Shopify',
-              default_min_stock: 0,
+              brand: product.vendor || 'Unknown',
+              external_id: externalId,
               updated_at: new Date().toISOString()
-            },
-            { onConflict: 'sku' }
-          )
-          .select()
-          .single()
+            })
+            .eq('id', existingProduct.id)
 
-        if (productError || !productRow) {
-          logger.error('Error upserting product', { error: productError, product: name })
-          continue
+          if (updateError) {
+            logger.error('Error updating product', { error: updateError, name })
+            continue
+          }
+
+          productId = existingProduct.id
+          stats.productsUpdated++
+
+        } else {
+          // Create new product
+          const { data: newProduct, error: insertError } = await supabase
+            .from('products')
+            .insert({
+              connection_id: connection.id,
+              external_id: externalId,
+              sku,
+              name,
+              brand: product.vendor || 'Unknown',
+              default_min_stock: DEFAULT_LOW_STOCK_THRESHOLD
+            })
+            .select('id')
+            .single()
+
+          if (insertError || !newProduct) {
+            logger.error('Error creating product', { error: insertError, name })
+            continue
+          }
+
+          productId = newProduct.id
+          stats.productsCreated++
         }
 
-        // Sync Inventory for this variant
-        if (v.inventoryItem && v.inventoryItem.id) {
-          await syncInventory(connection, productRow.id, v.inventoryItem.id)
+        // Sync inventory for this variant
+        if (variant.inventoryItem?.id) {
+          await syncInventory(connection, productId, variant.inventoryItem.id, stats)
         }
       }
     }
 
+    // Pagination
     hasNextPage = data.products.pageInfo.hasNextPage
     cursor = data.products.pageInfo.endCursor
   }
 }
 
-async function syncInventory(connection: ShopifyConnection, productId: string, inventoryItemId: string) {
-  const data: any = await shopifyGraphQL(
-    connection.shop_domain,
-    connection.access_token,
-    INVENTORY_LEVELS_QUERY,
-    { inventoryItemId, first: 10 }
-  )
-  
-  // Ensure we have inventory item data
-  if (!data.inventoryItem || !data.inventoryItem.inventoryLevels) return
+async function syncInventory(
+  connection: ShopifyConnection,
+  productId: string,
+  inventoryItemId: string,
+  stats: SyncStats
+) {
+  try {
+    const data: any = await shopifyGraphQL(
+      connection.shop_domain,
+      connection.access_token,
+      INVENTORY_LEVELS_QUERY,
+      { inventoryItemId, first: 10 }
+    )
 
-  const levels = data.inventoryItem.inventoryLevels.edges.map((e: any) => e.node)
+    if (!data.inventoryItem?.inventoryLevels) {
+      return
+    }
 
-  for (const level of levels) {
-    const available = level.quantities.find((q: any) => q.name === 'available')
-    const quantity = available ? available.quantity : 0
-    const locationName = level.location?.name || 'Unknown Location'
+    const levels = data.inventoryItem.inventoryLevels.edges.map((e: any) => e.node)
 
-    // Check if we already have an inventory level row for this product + location
-    const { data: existingLevel } = await supabase
-      .from('inventory_levels')
-      .select('id')
-      .eq('product_id', productId)
-      .eq('location_name', locationName)
-      .maybeSingle()
+    for (const level of levels) {
+      const available = level.quantities?.find((q: any) => q.name === 'available')
+      const quantity = available ? available.quantity : 0
+      const locationName = level.location?.name || 'Unknown Location'
 
-    if (existingLevel) {
-      await supabase
+      // Upsert inventory level
+      const { data: existingLevel } = await supabase
         .from('inventory_levels')
+        .select('id, quantity')
+        .eq('product_id', productId)
+        .eq('location_name', locationName)
+        .maybeSingle()
+
+      if (existingLevel) {
+        // Only update if quantity changed
+        if (existingLevel.quantity !== quantity) {
+          await supabase
+            .from('inventory_levels')
+            .update({
+              quantity,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingLevel.id)
+          
+          stats.inventoryUpdated++
+        }
+      } else {
+        // Create new inventory level
+        await supabase
+          .from('inventory_levels')
+          .insert({
+            product_id: productId,
+            location_name: locationName,
+            quantity,
+            low_stock_threshold: DEFAULT_LOW_STOCK_THRESHOLD
+          })
+        
+        stats.inventoryUpdated++
+      }
+    }
+  } catch (err) {
+    logger.error('Error syncing inventory', { productId, inventoryItemId, error: err })
+  }
+}
+
+async function checkLowStockAlerts(connectionId: string, stats: SyncStats) {
+  logger.info('🔍 Checking for low stock alerts...')
+
+  // Find all products with inventory below threshold
+  const { data: lowStockItems, error } = await supabase
+    .from('inventory_levels')
+    .select(`
+      id,
+      quantity,
+      low_stock_threshold,
+      product_id,
+      location_name,
+      products!inner (
+        id,
+        name,
+        sku,
+        connection_id
+      )
+    `)
+    .eq('products.connection_id', connectionId)
+
+  if (error || !lowStockItems) {
+    logger.error('Error checking low stock', error)
+    return
+  }
+
+  for (const item of lowStockItems) {
+    const threshold = item.low_stock_threshold || DEFAULT_LOW_STOCK_THRESHOLD
+    const isLowStock = item.quantity <= threshold
+
+    if (isLowStock) {
+      // Check if there's already an open alert for this product
+      const { data: existingAlert } = await supabase
+        .from('alerts')
+        .select('id')
+        .eq('product_id', item.product_id)
+        .eq('status', 'open')
+        .maybeSingle()
+
+      if (!existingAlert) {
+        // Create new alert
+        const { error: alertError } = await supabase
+          .from('alerts')
+          .insert({
+            product_id: item.product_id,
+            connection_id: connectionId,
+            alert_type: 'low_stock',
+            quantity: item.quantity,
+            threshold: threshold,
+            status: 'open'
+          })
+
+        if (!alertError) {
+          stats.alertsCreated++
+          const product = item.products as any
+          logger.warn(`⚠️ LOW STOCK ALERT: ${product.name} (${product.sku}) - ${item.quantity} units at ${item.location_name}`)
+        }
+      }
+    } else {
+      // If stock is above threshold, resolve any open alerts
+      await supabase
+        .from('alerts')
         .update({
-          quantity,
+          status: 'resolved',
+          resolved_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
-        .eq('id', existingLevel.id)
-    } else {
-      await supabase.from('inventory_levels').insert({
-        product_id: productId,
-        location_name: locationName,
-        quantity,
-        updated_at: new Date().toISOString()
-      })
+        .eq('product_id', item.product_id)
+        .eq('status', 'open')
     }
   }
+
+  logger.info(`📊 Alert check complete: ${stats.alertsCreated} new alerts created`)
 }

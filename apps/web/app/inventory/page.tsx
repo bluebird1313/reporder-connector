@@ -1,105 +1,125 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { InventoryTable } from "@/components/inventory-table"
 import { Input } from "@/components/ui/input"
-import { Search } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Search, Package, AlertTriangle } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
-// Mock inventory data - structure ready for Supabase
-const mockInventory = [
-  {
-    id: "1",
-    product_name: "Wireless Headphones",
-    sku: "WH-1000XM4",
-    quantity: 45,
-    source: "Shopify",
-    last_updated: "2024-01-20T10:30:00Z",
-  },
-  {
-    id: "2",
-    product_name: "Smart Watch",
-    sku: "SW-ULTRA-2",
-    quantity: 23,
-    source: "Square",
-    last_updated: "2024-01-20T09:15:00Z",
-  },
-  {
-    id: "3",
-    product_name: "USB-C Cable",
-    sku: "USBC-2M",
-    quantity: 156,
-    source: "Shopify",
-    last_updated: "2024-01-20T11:45:00Z",
-  },
-  {
-    id: "4",
-    product_name: "Laptop Stand",
-    sku: "LS-ALU-001",
-    quantity: 34,
-    source: "Lightspeed",
-    last_updated: "2024-01-19T16:20:00Z",
-  },
-  {
-    id: "5",
-    product_name: "Mechanical Keyboard",
-    sku: "KB-MECH-RGB",
-    quantity: 12,
-    source: "Square",
-    last_updated: "2024-01-20T08:00:00Z",
-  },
-  {
-    id: "6",
-    product_name: "Mouse Pad XL",
-    sku: "MP-XL-001",
-    quantity: 67,
-    source: "Shopify",
-    last_updated: "2024-01-20T10:00:00Z",
-  },
-  {
-    id: "7",
-    product_name: "Webcam HD",
-    sku: "WC-1080P",
-    quantity: 29,
-    source: "Lightspeed",
-    last_updated: "2024-01-19T14:30:00Z",
-  },
-  {
-    id: "8",
-    product_name: "Phone Case",
-    sku: "PC-SLIM-BLK",
-    quantity: 203,
-    source: "Shopify",
-    last_updated: "2024-01-20T12:00:00Z",
-  },
-  {
-    id: "9",
-    product_name: "Screen Protector",
-    sku: "SP-GLASS-9H",
-    quantity: 145,
-    source: "Square",
-    last_updated: "2024-01-20T09:30:00Z",
-  },
-  {
-    id: "10",
-    product_name: "Power Bank",
-    sku: "PB-20000MAH",
-    quantity: 56,
-    source: "Shopify",
-    last_updated: "2024-01-20T11:15:00Z",
-  },
-]
+interface InventoryItem {
+  id: string
+  product_id: string
+  location_name: string
+  quantity: number
+  low_stock_threshold: number
+  updated_at: string
+  products: {
+    name: string
+    sku: string
+    brand: string
+    platform_connections: {
+      shop_domain: string
+      platform: string
+    } | null
+  } | null
+}
 
 export default function InventoryPage() {
   const [searchQuery, setSearchQuery] = useState("")
+  const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchInventory()
+  }, [])
+
+  async function fetchInventory() {
+    try {
+      setLoading(true)
+      
+      const { data, error } = await supabase
+        .from('inventory_levels')
+        .select(`
+          id,
+          product_id,
+          location_name,
+          quantity,
+          low_stock_threshold,
+          updated_at,
+          products (
+            name,
+            sku,
+            brand,
+            platform_connections (
+              shop_domain,
+              platform
+            )
+          )
+        `)
+        .order('quantity', { ascending: true })
+
+      if (error) throw error
+      
+      // Transform the data to match our expected type
+      const transformedData: InventoryItem[] = (data || []).map((item: any) => ({
+        ...item,
+        products: item.products ? {
+          name: item.products.name,
+          sku: item.products.sku,
+          brand: item.products.brand,
+          platform_connections: item.products.platform_connections || null
+        } : null
+      }))
+      
+      setInventory(transformedData)
+    } catch (error) {
+      console.error('Error fetching inventory:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // Filter inventory based on search
-  const filteredInventory = mockInventory.filter(
-    (item) =>
-      item.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.source.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
+  const filteredInventory = inventory.filter((item) => {
+    const product = item.products
+    const searchLower = searchQuery.toLowerCase()
+    return (
+      product?.name?.toLowerCase().includes(searchLower) ||
+      product?.sku?.toLowerCase().includes(searchLower) ||
+      product?.brand?.toLowerCase().includes(searchLower) ||
+      item.location_name?.toLowerCase().includes(searchLower)
+    )
+  })
+
+  function getStockStatus(quantity: number, threshold: number) {
+    if (quantity === 0) return { label: 'Out of Stock', variant: 'destructive' as const }
+    if (quantity <= threshold) return { label: 'Low Stock', variant: 'destructive' as const }
+    if (quantity <= threshold * 2) return { label: 'Warning', variant: 'secondary' as const }
+    return { label: 'In Stock', variant: 'default' as const }
+  }
+
+  function formatDate(dateString: string) {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  const lowStockCount = inventory.filter(
+    item => item.quantity <= (item.low_stock_threshold || 10)
+  ).length
 
   return (
     <DashboardLayout>
@@ -108,12 +128,14 @@ export default function InventoryPage() {
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Inventory</h1>
-            <p className="text-muted-foreground mt-2">View and manage your synced inventory items</p>
+            <p className="text-muted-foreground mt-2">
+              {loading ? 'Loading...' : `${inventory.length} items tracked • ${lowStockCount} low stock`}
+            </p>
           </div>
           <div className="relative w-full md:w-80">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search products, SKU, or source..."
+              placeholder="Search products, SKU, or location..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9"
@@ -121,8 +143,101 @@ export default function InventoryPage() {
           </div>
         </div>
 
+        {/* Stats Summary */}
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="bg-card rounded-lg border p-4">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Package className="h-4 w-4" />
+              <span className="text-sm">Total Items</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">{inventory.length}</p>
+          </div>
+          <div className="bg-card rounded-lg border p-4">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Package className="h-4 w-4" />
+              <span className="text-sm">Total Units</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">
+              {inventory.reduce((sum, item) => sum + item.quantity, 0).toLocaleString()}
+            </p>
+          </div>
+          <div className="bg-card rounded-lg border p-4 border-destructive/50">
+            <div className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <span className="text-sm">Low Stock Items</span>
+            </div>
+            <p className="text-2xl font-bold mt-1 text-destructive">{lowStockCount}</p>
+          </div>
+        </div>
+
         {/* Table */}
-        <InventoryTable inventory={filteredInventory} />
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product</TableHead>
+                <TableHead>SKU</TableHead>
+                <TableHead>Location</TableHead>
+                <TableHead>Store</TableHead>
+                <TableHead className="text-right">Quantity</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Updated</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    Loading inventory...
+                  </TableCell>
+                </TableRow>
+              ) : filteredInventory.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    {searchQuery ? 'No matching items found.' : 'No inventory data yet.'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredInventory.map((item) => {
+                  const product = item.products
+                  const connection = product?.platform_connections as any
+                  const status = getStockStatus(item.quantity, item.low_stock_threshold || 10)
+                  
+                  return (
+                    <TableRow key={item.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{product?.name || 'Unknown'}</p>
+                          <p className="text-sm text-muted-foreground">{product?.brand || ''}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {product?.sku || 'N/A'}
+                      </TableCell>
+                      <TableCell>{item.location_name || 'Default'}</TableCell>
+                      <TableCell>
+                        <span className="text-sm text-muted-foreground">
+                          {connection?.shop_domain?.replace('.myshopify.com', '') || 'Unknown'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {item.quantity.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={status.variant}>
+                          {status.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {item.updated_at ? formatDate(item.updated_at) : 'Never'}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </DashboardLayout>
   )
