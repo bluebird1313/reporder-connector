@@ -9,6 +9,7 @@ import syncRouter from './api/routes/sync'
 import inventoryRouter from './api/routes/inventory'
 import shopifyRouter from './api/routes/shopify'
 import userRouter from './api/routes/user'
+import requestsRouter from './api/routes/requests'
 import logger from './lib/logger'
 
 // Load environment variables
@@ -94,6 +95,7 @@ app.use('/api/sync', syncRouter)
 app.use('/api/inventory', inventoryRouter)
 app.use('/api/shopify', shopifyRouter)
 app.use('/api/user', userRouter)
+app.use('/api/requests', requestsRouter)
 
 app.get('/api/test-db', async (req, res) => {
   try {

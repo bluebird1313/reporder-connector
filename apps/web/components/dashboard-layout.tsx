@@ -6,7 +6,17 @@ import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { LayoutDashboard, Package, Settings, Menu, X, Plug } from "lucide-react"
+import { 
+  LayoutDashboard, 
+  Package, 
+  Settings, 
+  Menu, 
+  X, 
+  Store,
+  Bell,
+  FileText,
+  ChevronRight
+} from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
@@ -15,10 +25,43 @@ interface DashboardLayoutProps {
 }
 
 const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Inventory", href: "/inventory", icon: Package },
-  { name: "Connections", href: "/connections", icon: Plug },
-  { name: "Settings", href: "/settings", icon: Settings },
+  { 
+    name: "Dashboard", 
+    href: "/", 
+    icon: LayoutDashboard,
+    description: "Overview & quick stats"
+  },
+  { 
+    name: "Alerts", 
+    href: "/alerts", 
+    icon: Bell,
+    description: "Low stock items",
+    highlight: true
+  },
+  { 
+    name: "Inventory", 
+    href: "/inventory", 
+    icon: Package,
+    description: "All products"
+  },
+  { 
+    name: "Stores", 
+    href: "/stores", 
+    icon: Store,
+    description: "Connected platforms"
+  },
+  { 
+    name: "Requests", 
+    href: "/requests", 
+    icon: FileText,
+    description: "Restock requests"
+  },
+  { 
+    name: "Settings", 
+    href: "/settings", 
+    icon: Settings,
+    description: "Preferences"
+  },
 ]
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
@@ -38,43 +81,68 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed top-0 left-0 z-50 h-screen w-64 border-r border-border bg-card transition-transform duration-300 lg:translate-x-0",
+          "fixed top-0 left-0 z-50 h-screen w-72 border-r border-border bg-card transition-transform duration-300 lg:translate-x-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
         <div className="flex h-full flex-col">
           {/* Logo */}
           <div className="flex h-16 items-center justify-between px-6 border-b border-border">
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">RC</span>
+            <Link href="/" className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-500 via-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/25">
+                <span className="text-white font-bold text-sm">R</span>
               </div>
-              <span className="font-semibold text-foreground">RepOrder</span>
-            </div>
+              <div>
+                <span className="font-bold text-foreground text-lg">RepOrder</span>
+                <span className="text-xs text-muted-foreground block -mt-0.5">Connector</span>
+              </div>
+            </Link>
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(false)}>
               <X className="h-5 w-5" />
             </Button>
           </div>
 
           {/* Navigation */}
-          <ScrollArea className="flex-1 py-4">
-            <nav className="space-y-1 px-3">
+          <ScrollArea className="flex-1 py-6">
+            <nav className="space-y-1.5 px-4">
               {navigation.map((item) => {
-                const isActive = pathname === item.href
+                const isActive = pathname === item.href || 
+                  (item.href !== "/" && pathname.startsWith(item.href))
                 return (
                   <Link
                     key={item.name}
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                      "group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
                       isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                        ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                      item.highlight && !isActive && "text-amber-500 hover:text-amber-400"
                     )}
                     onClick={() => setSidebarOpen(false)}
                   >
-                    <item.icon className="h-5 w-5" />
-                    {item.name}
+                    <item.icon className={cn(
+                      "h-5 w-5 transition-transform group-hover:scale-110",
+                      item.highlight && !isActive && "text-amber-500"
+                    )} />
+                    <div className="flex-1">
+                      <span className="flex items-center gap-2">
+                        {item.name}
+                        {item.highlight && !isActive && (
+                          <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                        )}
+                      </span>
+                      <span className={cn(
+                        "text-xs block mt-0.5 transition-colors",
+                        isActive ? "text-primary-foreground/70" : "text-muted-foreground/70"
+                      )}>
+                        {item.description}
+                      </span>
+                    </div>
+                    <ChevronRight className={cn(
+                      "h-4 w-4 opacity-0 transition-all group-hover:opacity-100 group-hover:translate-x-0.5",
+                      isActive && "opacity-100"
+                    )} />
                   </Link>
                 )
               })}
@@ -83,11 +151,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
           {/* Footer */}
           <div className="border-t border-border p-4">
-            <div className="flex items-center gap-3 px-2">
-              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500" />
+            <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-muted/50">
+              <div className="h-9 w-9 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm">
+                A
+              </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">Admin User</p>
-                <p className="text-xs text-muted-foreground truncate">admin@reporder.com</p>
+                <p className="text-sm font-medium truncate">Agency Admin</p>
+                <p className="text-xs text-muted-foreground truncate">Manage all stores</p>
               </div>
             </div>
           </div>
@@ -95,22 +165,22 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       </aside>
 
       {/* Main Content */}
-      <div className="lg:pl-64">
+      <div className="lg:pl-72">
         {/* Mobile header */}
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-background px-6 lg:hidden">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6 lg:hidden">
           <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)}>
             <Menu className="h-5 w-5" />
           </Button>
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center">
-              <span className="text-white font-bold text-xs">RC</span>
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center">
+              <span className="text-white font-bold text-xs">R</span>
             </div>
             <span className="font-semibold">RepOrder</span>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="p-6 lg:p-8">{children}</main>
+        <main className="p-6 lg:p-8 max-w-7xl">{children}</main>
       </div>
     </div>
   )
