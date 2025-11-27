@@ -67,17 +67,20 @@ export default function ConnectionsPage() {
       // Get the API URL
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3004'
       
-      // Call the disconnect API endpoint
+      // Call the backend disconnect endpoint (handles cleanup properly)
       const response = await fetch(`${apiUrl}/api/connections/${connectionId}/disconnect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
 
-      if (!response.ok) {
-        // If API fails, try direct Supabase update as fallback
-        console.log('API disconnect failed, using direct update...')
+      if (response.ok) {
+        const result = await response.json()
+        console.log('Disconnect successful:', result)
+      } else {
+        // If backend API fails, fall back to direct Supabase deletion
+        console.log('Backend disconnect failed, using direct Supabase fallback...')
         
-        // Delete related data first
+        // Delete related data first (order matters due to foreign keys)
         await supabase.from('alerts').delete().eq('connection_id', connectionId)
         
         // Get product IDs for this connection
@@ -89,8 +92,10 @@ export default function ConnectionsPage() {
         if (products && products.length > 0) {
           const productIds = products.map(p => p.id)
           await supabase.from('inventory_levels').delete().in('product_id', productIds)
-          await supabase.from('products').delete().eq('connection_id', connectionId)
         }
+        
+        // Delete products
+        await supabase.from('products').delete().eq('connection_id', connectionId)
         
         // Finally delete the connection
         const { error } = await supabase
