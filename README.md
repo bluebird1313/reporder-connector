@@ -1,8 +1,20 @@
 # RepOrder Connector
 
-**Multi-Tenant Inventory Sync for Retail Agencies**
+**Multi-Tenant Inventory Sync & Restock Management for Retail Agencies**
 
-RepOrder Connector links retail store inventory systems (Shopify, Lightspeed, Square) to a centralized dashboard. Agencies can monitor inventory levels across multiple retailers and receive alerts when stock runs low.
+RepOrder Connector links retail store inventory systems (Shopify, Lightspeed, Square) to a centralized dashboard. Agencies can monitor inventory levels across multiple retailers, receive low-stock alerts, and send restock requests to store owners for approval.
+
+---
+
+## ✨ Key Features
+
+- 📊 **Unified Dashboard** - Monitor all connected stores in one place
+- 🔔 **Smart Alerts** - Automatic low-stock detection with severity levels
+- 📦 **Inventory Tracking** - Real-time stock levels across all locations
+- 📝 **Restock Requests** - Create and send purchase approval requests
+- 🔗 **Magic Links** - Retailers approve orders without needing an account
+- 🔄 **Auto-Sync** - Automatic inventory sync after OAuth connection
+- 🏪 **Multi-Platform** - Support for Shopify (more coming soon)
 
 ---
 
@@ -25,8 +37,8 @@ RepOrder Connector links retail store inventory systems (Shopify, Lightspeed, Sq
 │                    │   (Render)          │                              │
 │                    │                     │                              │
 │                    │  • OAuth handling   │                              │
-│                    │  • Webhook receiver │                              │
-│                    │  • Sync engine      │                              │
+│                    │  • Auto-sync        │                              │
+│                    │  • Restock API      │                              │
 │                    └──────────┬──────────┘                              │
 │                               │                                          │
 │                               ▼                                          │
@@ -38,6 +50,7 @@ RepOrder Connector links retail store inventory systems (Shopify, Lightspeed, Sq
 │                    │  • products         │                              │
 │                    │  • inventory_levels │                              │
 │                    │  • alerts           │                              │
+│                    │  • restock_requests │                              │
 │                    └──────────┬──────────┘                              │
 │                               │                                          │
 │                               ▼                                          │
@@ -45,9 +58,11 @@ RepOrder Connector links retail store inventory systems (Shopify, Lightspeed, Sq
 │                    │   FRONTEND          │                              │
 │                    │   (Vercel)          │                              │
 │                    │                     │                              │
-│                    │  • Dashboard UI     │                              │
-│                    │  • Alerts view      │                              │
-│                    │  • Inventory table  │                              │
+│                    │  • Dashboard        │                              │
+│                    │  • Alerts           │                              │
+│                    │  • Inventory        │                              │
+│                    │  • Restock Requests │                              │
+│                    │  • Approval Pages   │                              │
 │                    └─────────────────────┘                              │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -57,21 +72,74 @@ RepOrder Connector links retail store inventory systems (Shopify, Lightspeed, Sq
 
 | Component | Technology | Hosting | Purpose |
 |-----------|------------|---------|---------|
-| **Backend API** | Node.js, Express, TypeScript | Render | OAuth, webhooks, sync jobs |
-| **Frontend** | Next.js, Tailwind, Shadcn UI | Vercel | Dashboard UI |
+| **Backend API** | Node.js, Express, TypeScript | Render | OAuth, sync, restock API |
+| **Frontend** | Next.js, Tailwind, Shadcn UI | Vercel | Dashboard & approval pages |
 | **Database** | PostgreSQL | Supabase | Data storage, real-time |
+
+---
+
+## 📱 Dashboard Pages
+
+| Page | URL | Description |
+|------|-----|-------------|
+| **Dashboard** | `/` | Overview with stats, alerts preview, store health |
+| **Alerts** | `/alerts` | All low stock items with filters and bulk actions |
+| **Inventory** | `/inventory` | Full product table with search |
+| **Stores** | `/stores` | Connected stores list with health indicators |
+| **Store Detail** | `/stores/[id]` | Per-store inventory and settings |
+| **Requests** | `/requests` | Manage restock requests |
+| **New Request** | `/requests/new` | Create restock request from alerts |
+| **Settings** | `/settings` | Thresholds, sync, notifications |
+| **Approval** | `/approve/[token]` | Magic link approval page (for retailers) |
+
+---
+
+## 🔄 Restock Request Workflow
+
+```
+1. Low Stock Detected
+   System identifies items below threshold
+                    ↓
+2. Agency Creates Request
+   Select store → Pick items → Set quantities
+                    ↓
+3. Send for Approval
+   Copy magic link → Send to retailer via email
+                    ↓
+4. Retailer Reviews (No Login Required!)
+   Click link → Review items → Adjust quantities
+                    ↓
+5. Approve or Decline
+   One-click decision with optional notes
+                    ↓
+6. Agency Notified
+   View response in dashboard → Process order
+```
+
+### Magic Link Approval
+
+Retailers receive a secure link that allows them to:
+- ✅ View all requested items
+- ✅ Adjust quantities
+- ✅ Exclude specific items
+- ✅ Add notes
+- ✅ Approve or decline with one click
+
+**No account or login required!**
 
 ---
 
 ## 📊 Database Schema
 
-### `platform_connections`
-Stores OAuth connections to retail platforms.
+### Core Tables
+
+#### `platform_connections`
+OAuth connections to retail platforms.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID | Primary key |
-| store_id | UUID | Reference to stores table |
+| store_id | UUID | Reference to stores |
 | platform | TEXT | 'shopify', 'lightspeed', 'square' |
 | shop_domain | TEXT | e.g., 'mystore.myshopify.com' |
 | access_token | TEXT | OAuth access token |
@@ -79,42 +147,66 @@ Stores OAuth connections to retail platforms.
 | is_active | BOOLEAN | Connection status |
 | last_sync_at | TIMESTAMP | Last successful sync |
 
-### `products`
-Unified product catalog from all connected stores.
+#### `products`
+Unified product catalog from all stores.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID | Primary key |
 | connection_id | UUID | Which store this belongs to |
-| external_id | TEXT | Platform's product/variant ID |
+| external_id | TEXT | Platform's product ID |
 | sku | TEXT | Product SKU |
 | name | TEXT | Product name |
 | brand | TEXT | Vendor/brand |
-| default_min_stock | INTEGER | Default low-stock threshold |
 
-### `inventory_levels`
-Current stock quantities per product per location.
+#### `inventory_levels`
+Current stock quantities.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID | Primary key |
 | product_id | UUID | Reference to products |
-| location_name | TEXT | Warehouse/store location |
+| location_name | TEXT | Warehouse location |
 | quantity | INTEGER | Current stock level |
 | low_stock_threshold | INTEGER | Alert threshold |
 
-### `alerts`
-Low-stock incidents for monitoring.
+#### `alerts`
+Low-stock incidents.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID | Primary key |
 | product_id | UUID | Reference to products |
 | connection_id | UUID | Which store |
-| alert_type | TEXT | 'low_stock' |
 | quantity | INTEGER | Stock when alert fired |
 | threshold | INTEGER | Threshold crossed |
-| status | TEXT | 'open' or 'resolved' |
+| status | TEXT | 'open', 'ordered', 'resolved' |
+
+#### `restock_requests`
+Purchase approval requests.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| connection_id | UUID | Which store |
+| status | TEXT | 'draft', 'pending', 'approved', 'rejected' |
+| magic_token | UUID | Secure approval link token |
+| token_expires_at | TIMESTAMP | Link expiration |
+| sent_at | TIMESTAMP | When sent to retailer |
+| approved_at | TIMESTAMP | When approved |
+| retailer_notes | TEXT | Notes from retailer |
+
+#### `restock_request_items`
+Items in each request.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| request_id | UUID | Reference to request |
+| product_id | UUID | Reference to product |
+| current_quantity | INTEGER | Stock at time of request |
+| requested_quantity | INTEGER | Suggested order quantity |
+| approved_quantity | INTEGER | Retailer-approved quantity |
 
 ---
 
@@ -123,7 +215,7 @@ Low-stock incidents for monitoring.
 ### Prerequisites
 - Node.js 18+
 - Supabase account
-- Shopify Partner account (for Shopify integration)
+- Shopify Partner account
 
 ### 1. Clone and Install
 
@@ -148,13 +240,17 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 SHOPIFY_API_KEY=your-shopify-api-key
 SHOPIFY_API_SECRET=your-shopify-api-secret
 SHOPIFY_SCOPES=read_products,read_inventory,read_locations,read_orders
-SHOPIFY_REDIRECT_URI=http://localhost:3004/api/shopify/callback
+SHOPIFY_REDIRECT_URI=https://your-render-url.com/api/shopify/callback
+
+# Frontend URL (for redirects after OAuth)
+FRONTEND_URL=https://your-vercel-url.vercel.app
 ```
 
 #### Frontend (`apps/web/.env.local`)
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+NEXT_PUBLIC_API_URL=https://your-render-url.com
 ```
 
 ### 3. Run Locally
@@ -180,41 +276,58 @@ npm run dev
 4. Set Redirect URL: `https://your-render-url.com/api/shopify/callback`
 5. Copy Client ID and Client Secret
 
-### 2. Initiate OAuth
+### 2. Set Up Distribution
+1. In Shopify Partners, go to your app → Distribution
+2. Choose **Custom distribution** or **Unlisted**
+3. Generate install links for specific stores
+
+### 3. Connect a Store
+Send the store owner this link:
 ```
-https://your-render-url.com/api/shopify/auth?shop=store-name
+https://your-render-url.com/api/shopify/auth?shop=store-name.myshopify.com
 ```
 
-### 3. Trigger Sync
-```bash
-curl -X POST https://your-render-url.com/api/sync/trigger
-```
+The store will automatically sync after OAuth completes!
 
 ---
 
 ## 📡 API Endpoints
 
-### Health Check
+### Health
 ```
-GET /health
+GET /health                              # Service health check
 ```
 
 ### Shopify OAuth
 ```
-GET /api/shopify/auth?shop={shop-name}    # Start OAuth
-GET /api/shopify/callback                  # OAuth callback
-GET /api/shopify/verify?shop={shop-name}   # Check connection
-```
-
-### Sync
-```
-POST /api/sync/trigger                     # Trigger manual sync
-GET  /api/sync/logs                        # View sync history
+GET /api/shopify/auth?shop={shop}        # Start OAuth
+GET /api/shopify/callback                # OAuth callback (auto-syncs!)
+GET /api/shopify/verify?shop={shop}      # Check connection status
 ```
 
 ### Connections
 ```
-GET /api/connections                       # List all connections
+GET  /api/connections                    # List all connections
+POST /api/connections/:id/disconnect     # Disconnect and cleanup
+```
+
+### Sync
+```
+POST /api/sync/trigger                   # Trigger sync for all stores
+POST /api/sync/:connectionId             # Sync specific store
+```
+
+### Restock Requests
+```
+GET    /api/requests                     # List all requests
+GET    /api/requests/:id                 # Get specific request
+POST   /api/requests                     # Create new request
+POST   /api/requests/:id/send            # Send for approval
+DELETE /api/requests/:id                 # Delete request
+
+# Magic Link Approval (for retailers)
+GET    /api/requests/approve/:token      # Get request by token
+POST   /api/requests/approve/:token      # Submit approval/rejection
 ```
 
 ---
@@ -228,7 +341,7 @@ GET /api/connections                       # List all connections
 3. Set root directory: `services/api`
 4. Build command: `npm install && npm run build`
 5. Start command: `npm start`
-6. Add environment variables (see above)
+6. Add environment variables
 
 ### Frontend (Vercel)
 
@@ -245,50 +358,54 @@ GET /api/connections                       # List all connections
 reporder-connector/
 ├── apps/
 │   └── web/                    # Next.js frontend
-│       ├── app/                # App router pages
+│       ├── app/
+│       │   ├── alerts/         # Alerts page
+│       │   ├── approve/[token] # Magic link approval
+│       │   ├── connections/    # Legacy connections page
+│       │   ├── inventory/      # Inventory table
+│       │   ├── requests/       # Restock requests
+│       │   ├── settings/       # Settings page
+│       │   └── stores/         # Stores list & detail
 │       ├── components/         # UI components
 │       └── lib/                # Utilities
 ├── services/
 │   └── api/                    # Express backend
-│       ├── src/
-│       │   ├── api/routes/     # API endpoints
-│       │   ├── connectors/     # Platform adapters
-│       │   └── lib/            # Shared utilities
-│       └── Dockerfile
-├── adapters/                   # Platform adapter interfaces
-│   └── shopify/
-├── core/                       # Shared types and interfaces
-├── scripts/                    # Utility scripts
-└── db/                         # Database migrations
+│       └── src/
+│           ├── api/routes/     # API endpoints
+│           │   ├── shopify.ts  # OAuth & webhooks
+│           │   ├── sync.ts     # Sync endpoints
+│           │   ├── requests.ts # Restock requests API
+│           │   └── ...
+│           ├── connectors/     # Platform adapters
+│           └── lib/            # Shared utilities
+├── core/                       # Shared types
+└── scripts/                    # Utility scripts
 ```
 
 ---
 
-## 🔄 How Sync Works
-
-1. **OAuth Connection** - Store owner authorizes the app
-2. **Initial Sync** - All products and inventory pulled from platform
-3. **Alert Detection** - Low stock items flagged automatically
-4. **Real-time Updates** - Webhooks notify of inventory changes
-5. **Dashboard** - View all stores and alerts in one place
-
----
-
-## 📋 Scripts
+## 📋 Useful Scripts
 
 ```bash
 # Check database connection
 node scripts/check-db.js
 
-# View current data
-node scripts/show-data.js
-
 # Run manual sync
 node scripts/run-sync.js
 
-# Test Shopify connection
+# Test Shopify API connection
 node scripts/test-sync.js
 ```
+
+---
+
+## 🔐 Security
+
+- OAuth tokens stored securely in Supabase
+- Magic links use UUID tokens with expiration
+- Row Level Security (RLS) enabled on all tables
+- CORS configured for specific origins
+- HMAC validation for Shopify webhooks
 
 ---
 
