@@ -245,10 +245,22 @@ router.get('/callback', async (req: Request, res: Response) => {
       .eq('platform', 'shopify')
       .single()
 
+    // Check if this is a reconnection (existing connection with setup_complete)
+    let isReconnection = false
+    
     if (existingConnection) {
-      // Update
+      // Check if setup was previously completed
+      const { data: existingData } = await supabase
+        .from('platform_connections')
+        .select('setup_complete, approved_vendors')
+        .eq('id', existingConnection.id)
+        .single()
+      
+      isReconnection = existingData?.setup_complete === true
+      
+      // Update existing connection
       connectionId = existingConnection.id
-      logger.info('Updating existing connection', { id: existingConnection.id });
+      logger.info('Updating existing connection', { id: existingConnection.id, isReconnection });
       const { error: updateError } = await supabase
         .from('platform_connections')
         .update({
@@ -257,6 +269,7 @@ router.get('/callback', async (req: Request, res: Response) => {
           shop_domain: shopDomain,
           is_active: true,
           updated_at: new Date().toISOString()
+          // Keep setup_complete and approved_vendors as-is for reconnections
         })
         .eq('id', existingConnection.id)
       
@@ -265,7 +278,7 @@ router.get('/callback', async (req: Request, res: Response) => {
          throw updateError;
       }
     } else {
-      // Insert
+      // Insert new connection - setup_complete defaults to false
       logger.info('Inserting new connection', { storeId });
       const { data: newConnection, error: insertError } = await supabase
         .from('platform_connections')
@@ -275,7 +288,9 @@ router.get('/callback', async (req: Request, res: Response) => {
           shop_domain: shopDomain,
           access_token: accessToken,
           scopes: scopes?.split(','),
-          is_active: true
+          is_active: true,
+          setup_complete: false,  // Retailer needs to complete brand selection
+          approved_vendors: null  // Will be set during brand selection
         })
         .select('id')
         .single()
@@ -287,117 +302,32 @@ router.get('/callback', async (req: Request, res: Response) => {
       connectionId = newConnection.id
     }
 
-    logger.info('✅ Shopify connection saved', { shop: shopDomain, connectionId })
-
-    // 3. AUTO-SYNC: Trigger initial sync in the background
-    if (connectionId) {
-      logger.info('🔄 Starting automatic initial sync...', { connectionId })
-      
-      // Run sync in background (don't await - let it run async)
-      syncShop(connectionId)
-        .then((stats) => {
-          logger.info('✅ Initial sync completed', { shop: shopDomain, stats })
-        })
-        .catch((syncError) => {
-          logger.error('❌ Initial sync failed', { shop: shopDomain, error: syncError })
-        })
-    }
+    logger.info('✅ Shopify connection saved', { shop: shopDomain, connectionId, isReconnection })
 
     // Get the frontend URL for redirect
     const frontendUrl = process.env.FRONTEND_URL || 'https://reporder-connector-web.vercel.app'
 
-    // Success page with auto-redirect to dashboard
-    res.send(`
-      <html>
-        <head>
-          <title>Connection Successful</title>
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
-              color: white;
-              min-height: 100vh;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              margin: 0;
-            }
-            .container {
-              text-align: center;
-              padding: 40px;
-              background: rgba(255,255,255,0.05);
-              border-radius: 16px;
-              border: 1px solid rgba(255,255,255,0.1);
-              max-width: 500px;
-            }
-            .success-icon {
-              font-size: 64px;
-              margin-bottom: 20px;
-            }
-            h1 {
-              margin: 0 0 10px 0;
-              font-size: 28px;
-            }
-            .shop-name {
-              color: #3b82f6;
-              font-weight: 600;
-            }
-            .status {
-              margin: 20px 0;
-              padding: 15px;
-              background: rgba(34, 197, 94, 0.1);
-              border: 1px solid rgba(34, 197, 94, 0.3);
-              border-radius: 8px;
-            }
-            .syncing {
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              gap: 10px;
-              color: #fbbf24;
-            }
-            .spinner {
-              width: 20px;
-              height: 20px;
-              border: 2px solid rgba(251, 191, 36, 0.3);
-              border-top-color: #fbbf24;
-              border-radius: 50%;
-              animation: spin 1s linear infinite;
-            }
-            @keyframes spin {
-              to { transform: rotate(360deg); }
-            }
-            .redirect-msg {
-              color: #888;
-              font-size: 14px;
-              margin-top: 20px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="success-icon">✅</div>
-            <h1>Connection Successful!</h1>
-            <p>Store <span class="shop-name">${shopDomain}</span> is now connected.</p>
-            
-            <div class="status">
-              <div class="syncing">
-                <div class="spinner"></div>
-                <span>Syncing products & inventory...</span>
-              </div>
-            </div>
-            
-            <p class="redirect-msg">Redirecting to dashboard in 3 seconds...</p>
-          </div>
-          
-          <script>
-            setTimeout(() => {
-              window.location.href = "${frontendUrl}/connections";
-            }, 3000);
-          </script>
-        </body>
-      </html>
-    `)
+    // If this is a reconnection with existing brand setup, sync and go to dashboard
+    if (isReconnection && connectionId) {
+      logger.info('🔄 Reconnection detected - starting sync with existing brand settings...', { connectionId })
+      
+      // Run sync in background
+      syncShop(connectionId)
+        .then((stats) => {
+          logger.info('✅ Reconnection sync completed', { shop: shopDomain, stats })
+        })
+        .catch((syncError) => {
+          logger.error('❌ Reconnection sync failed', { shop: shopDomain, error: syncError })
+        })
+
+      // Redirect to dashboard
+      return res.redirect(`${frontendUrl}/connections?reconnected=true`)
+    }
+
+    // For NEW connections: redirect to brand picker page
+    // The retailer will select which brands to share before any sync happens
+    logger.info('🏷️ New connection - redirecting to brand picker...', { connectionId })
+    res.redirect(`${frontendUrl}/setup/${connectionId}`)
   } catch (error) {
     logger.error('Error in OAuth callback:', error)
     res.status(500).json({

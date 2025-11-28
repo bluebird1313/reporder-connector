@@ -111,12 +111,11 @@ export default function InventoryPage() {
         is_archived: item.products?.is_archived || false
       }))
       
-      // Extract unique brands
-      const uniqueBrands = [...new Set(transformedData.map(i => i.product_brand).filter(Boolean))]
-      uniqueBrands.sort()
-      setBrands(uniqueBrands)
-
       setInventory(transformedData)
+
+      // Fetch brands dynamically from database
+      const { data: brandsData } = await supabase.rpc('get_all_brands')
+      setBrands(brandsData?.map((b: { brand: string }) => b.brand) || [])
     } catch (error) {
       console.error('Error fetching inventory:', error)
     } finally {

@@ -143,12 +143,12 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
         }
       })
 
-      // Extract unique brands
-      const uniqueBrands = [...new Set(transformedProducts.map(p => p.brand).filter(Boolean))]
-      uniqueBrands.sort()
-      setBrands(uniqueBrands)
-
       setProducts(transformedProducts)
+
+      // Fetch brands dynamically from database
+      const { data: brandsData } = await supabase
+        .rpc('get_store_brands', { store_id: resolvedParams.id })
+      setBrands(brandsData?.map((b: { brand: string }) => b.brand) || [])
 
       // Fetch alerts for this store
       const { data: alertsData } = await supabase

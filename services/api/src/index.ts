@@ -10,6 +10,7 @@ import inventoryRouter from './api/routes/inventory'
 import shopifyRouter from './api/routes/shopify'
 import userRouter from './api/routes/user'
 import requestsRouter from './api/routes/requests'
+import vendorsRouter from './api/routes/vendors'
 import logger from './lib/logger'
 
 // Load environment variables
@@ -96,6 +97,7 @@ app.use('/api/inventory', inventoryRouter)
 app.use('/api/shopify', shopifyRouter)
 app.use('/api/user', userRouter)
 app.use('/api/requests', requestsRouter)
+app.use('/api/vendors', vendorsRouter)
 
 app.get('/api/test-db', async (req, res) => {
   try {

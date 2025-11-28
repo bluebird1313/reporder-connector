@@ -114,13 +114,12 @@ export default function AlertsPage() {
         is_archived: alert.products?.is_archived || false
       }))
 
-      // Extract unique brands
-      const uniqueBrands = [...new Set(transformedAlerts.map(a => a.product_brand).filter(Boolean))]
-      uniqueBrands.sort()
-
       setConnections(connectionsData || [])
       setAlerts(transformedAlerts)
-      setBrands(uniqueBrands)
+
+      // Fetch brands dynamically from database
+      const { data: brandsData } = await supabase.rpc('get_all_brands')
+      setBrands(brandsData?.map((b: { brand: string }) => b.brand) || [])
     } catch (error) {
       console.error('Error fetching alerts:', error)
     } finally {

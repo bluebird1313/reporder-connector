@@ -15,6 +15,7 @@ RepOrder Connector links retail store inventory systems (Shopify, Lightspeed, Sq
 - 🔗 **Magic Links** - Retailers approve orders without needing an account
 - 🔄 **Auto-Sync** - Automatic inventory sync after OAuth connection
 - 🏪 **Multi-Platform** - Support for Shopify (more coming soon)
+- 🔐 **Brand Access Control** - Retailers choose which brands to share (privacy-first)
 
 ---
 
@@ -91,6 +92,70 @@ RepOrder Connector links retail store inventory systems (Shopify, Lightspeed, Sq
 | **New Request** | `/requests/new` | Create restock request from alerts |
 | **Settings** | `/settings` | Thresholds, sync, notifications |
 | **Approval** | `/approve/[token]` | Magic link approval page (for retailers) |
+| **Brand Setup** | `/setup/[connectionId]` | Brand selection page (post-OAuth) |
+
+---
+
+## 🔐 Brand Access Control
+
+RepOrder gives retailers full control over which brands/vendors they share with your platform. This builds trust and ensures retailers are comfortable connecting their stores.
+
+### How It Works
+
+```
+1. RETAILER CONNECTS STORE
+   Retailer clicks your OAuth link
+                    ↓
+2. SHOPIFY OAUTH
+   Retailer authorizes the app
+                    ↓
+3. BRAND PICKER PAGE
+   Retailer sees ALL their vendors/brands
+   
+   ☑ Howler Brothers    ← Shares this brand
+   ☑ YETI               ← Shares this brand
+   ☐ Tecovas            ← Keeps private
+   ☐ Big Bend Coffee    ← Keeps private
+   
+   [ ] Select All (for full access)
+                    ↓
+4. SELECTIVE SYNC
+   Only approved brands are synced
+   Private products are NEVER fetched or stored
+```
+
+### Privacy Guarantees
+
+| Retailer Concern | How We Handle It |
+|------------------|------------------|
+| "Will you see all my products?" | No - we only query products from approved vendors |
+| "What about my other brands?" | Never fetched, never stored, completely invisible to the system |
+| "Can I change my selection?" | Yes - update anytime from connections settings |
+| "What if I want to share everything?" | Just check "Select All Brands" for full access |
+
+### Database Schema
+
+The `platform_connections` table includes:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `approved_vendors` | TEXT[] | Array of approved vendor names. `NULL` = all vendors (full access) |
+| `setup_complete` | BOOLEAN | Whether retailer has completed brand selection |
+
+### API Flow
+
+```
+# After OAuth, redirect to brand picker
+GET /api/vendors/:connectionId        → Returns list of all vendors in store
+
+# Retailer submits selection
+POST /api/vendors/:connectionId/approve
+Body: { vendors: ["Brand1", "Brand2"] }  → Specific brands
+  OR: { selectAll: true }                → Full access
+
+# Sync respects approved vendors
+POST /api/sync/:connectionId            → Only syncs approved brands
+```
 
 ---
 
@@ -146,6 +211,8 @@ OAuth connections to retail platforms.
 | scopes | TEXT[] | Granted permissions |
 | is_active | BOOLEAN | Connection status |
 | last_sync_at | TIMESTAMP | Last successful sync |
+| approved_vendors | TEXT[] | Approved vendors (NULL = all) |
+| setup_complete | BOOLEAN | Brand selection completed |
 
 #### `products`
 Unified product catalog from all stores.
@@ -287,7 +354,7 @@ Send the store owner this link:
 https://your-render-url.com/api/shopify/auth?shop=store-name.myshopify.com
 ```
 
-The store will automatically sync after OAuth completes!
+After OAuth completes, the retailer will be shown a **Brand Picker** page where they can select which vendors/brands to share. Once they complete this setup, only those brands will be synced.
 
 ---
 
@@ -315,6 +382,13 @@ POST /api/connections/:id/disconnect     # Disconnect and cleanup
 ```
 POST /api/sync/trigger                   # Trigger sync for all stores
 POST /api/sync/:connectionId             # Sync specific store
+```
+
+### Vendors (Brand Access Control)
+```
+GET  /api/vendors/:connectionId          # Get all vendors from store
+POST /api/vendors/:connectionId/approve  # Save approved vendors
+GET  /api/vendors/:connectionId/status   # Check setup status
 ```
 
 ### Restock Requests
@@ -365,6 +439,7 @@ reporder-connector/
 │       │   ├── inventory/      # Inventory table
 │       │   ├── requests/       # Restock requests
 │       │   ├── settings/       # Settings page
+│       │   ├── setup/[id]      # Brand selection (post-OAuth)
 │       │   └── stores/         # Stores list & detail
 │       ├── components/         # UI components
 │       └── lib/                # Utilities
@@ -374,6 +449,7 @@ reporder-connector/
 │           ├── api/routes/     # API endpoints
 │           │   ├── shopify.ts  # OAuth & webhooks
 │           │   ├── sync.ts     # Sync endpoints
+│           │   ├── vendors.ts  # Brand access control
 │           │   ├── requests.ts # Restock requests API
 │           │   └── ...
 │           ├── connectors/     # Platform adapters

@@ -1,12 +1,14 @@
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
-import { shopifyGraphQL, PRODUCTS_QUERY, INVENTORY_LEVELS_QUERY } from './client'
+import { shopifyGraphQL, PRODUCTS_QUERY, PRODUCTS_BY_VENDORS_QUERY, INVENTORY_LEVELS_QUERY } from './client'
 
 interface ShopifyConnection {
   id: string
   platform: string
   shop_domain: string
   access_token: string
+  approved_vendors: string[] | null  // null = all vendors, [] = none, [...] = specific vendors
+  setup_complete: boolean
 }
 
 interface SyncStats {
@@ -28,10 +30,10 @@ export async function syncShop(connectionId: string): Promise<SyncStats> {
     alertsCreated: 0
   }
 
-  // Get the connection details
+  // Get the connection details including approved vendors
   const { data: connection, error } = await supabase
     .from('platform_connections')
-    .select('id, platform, shop_domain, access_token')
+    .select('id, platform, shop_domain, access_token, approved_vendors, setup_complete')
     .eq('id', connectionId)
     .single()
 
@@ -43,7 +45,24 @@ export async function syncShop(connectionId: string): Promise<SyncStats> {
     throw new Error('Sync only implemented for Shopify connections')
   }
 
+  // Check if setup is complete (brand selection done)
+  if (!connection.setup_complete) {
+    logger.warn(`⚠️ Skipping sync - brand selection not complete for ${connection.shop_domain}`)
+    throw new Error('Brand selection not complete. Retailer must approve vendors before sync.')
+  }
+
+  // Check if any vendors are approved
+  if (connection.approved_vendors && connection.approved_vendors.length === 0) {
+    logger.warn(`⚠️ Skipping sync - no vendors approved for ${connection.shop_domain}`)
+    return stats // Return empty stats - no products to sync
+  }
+
+  const vendorInfo = connection.approved_vendors 
+    ? `${connection.approved_vendors.length} approved vendor(s): ${connection.approved_vendors.join(', ')}`
+    : 'ALL vendors (full access)'
+
   logger.info(`🚀 Starting sync for Shopify store: ${connection.shop_domain}`)
+  logger.info(`🏷️ Syncing: ${vendorInfo}`)
 
   try {
     // Sync all products and inventory
@@ -71,17 +90,42 @@ async function syncProducts(connection: ShopifyConnection, stats: SyncStats) {
   let hasNextPage = true
   let cursor = null
 
+  // Build vendor filter query if specific vendors are approved
+  // null = all vendors (no filter needed)
+  // [...] = specific vendors only
+  const approvedVendors = connection.approved_vendors
+  const useVendorFilter = approvedVendors !== null && approvedVendors.length > 0
+
+  // Build Shopify query string for vendor filter
+  // Format: vendor:"Brand1" OR vendor:"Brand2"
+  const vendorQuery = useVendorFilter
+    ? approvedVendors.map(v => `vendor:"${v}"`).join(' OR ')
+    : null
+
   while (hasNextPage) {
-    // Fetch products from Shopify
-    const data: any = await shopifyGraphQL(
-      connection.shop_domain,
-      connection.access_token,
-      PRODUCTS_QUERY,
-      { first: 25, cursor }
-    )
+    // Fetch products from Shopify - use filtered query if vendors are specified
+    let data: any
+    
+    if (vendorQuery) {
+      // Use vendor-filtered query
+      data = await shopifyGraphQL(
+        connection.shop_domain,
+        connection.access_token,
+        PRODUCTS_BY_VENDORS_QUERY,
+        { first: 25, cursor, query: vendorQuery }
+      )
+    } else {
+      // Fetch all products (full access)
+      data = await shopifyGraphQL(
+        connection.shop_domain,
+        connection.access_token,
+        PRODUCTS_QUERY,
+        { first: 25, cursor }
+      )
+    }
 
     const products = data.products.edges.map((e: any) => e.node)
-    logger.info(`📦 Processing ${products.length} products...`)
+    logger.info(`📦 Processing ${products.length} products...${vendorQuery ? ' (filtered by approved vendors)' : ''}`)
 
     for (const product of products) {
       // Process each variant as a product in our system

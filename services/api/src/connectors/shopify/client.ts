@@ -102,5 +102,60 @@ export const INVENTORY_LEVELS_QUERY = `
   }
 `
 
+// Query to get all unique vendors (brands) in the store
+export const VENDORS_QUERY = `
+  query getVendors($first: Int!) {
+    shop {
+      name
+    }
+    productVendors(first: $first) {
+      edges {
+        node
+      }
+    }
+  }
+`
+
+// Query products filtered by specific vendors
+export const PRODUCTS_BY_VENDORS_QUERY = `
+  query getProductsByVendors($first: Int!, $cursor: String, $query: String!) {
+    products(first: $first, after: $cursor, query: $query) {
+      edges {
+        node {
+          id
+          title
+          handle
+          productType
+          vendor
+          status
+          createdAt
+          updatedAt
+          variants(first: 20) {
+            edges {
+              node {
+                id
+                title
+                sku
+                barcode
+                price
+                inventoryItem {
+                  id
+                  tracked
+                }
+                createdAt
+                updatedAt
+              }
+            }
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`
+
 
 
