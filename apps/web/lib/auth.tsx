@@ -107,10 +107,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function fetchProfile(userId: string) {
     try {
-      // Add timeout to prevent hanging
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 5000)
-      
       const { data, error } = await supabase
         .from('user_profiles')
         .select(`
@@ -127,13 +123,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         `)
         .eq('id', userId)
         .single()
-        .abortSignal(controller.signal)
-      
-      clearTimeout(timeoutId)
 
       if (error) {
         console.error('Error fetching profile:', error)
-        // Profile might not exist yet, that's okay
         setProfile(null)
       } else {
         setProfile({
@@ -141,12 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           organization: data.organizations as any
         })
       }
-    } catch (error: any) {
-      if (error?.name === 'AbortError') {
-        console.warn('Profile fetch timed out')
-      } else {
-        console.error('Error fetching profile:', error)
-      }
+    } catch (error) {
+      console.error('Error fetching profile:', error)
       setProfile(null)
     } finally {
       setLoading(false)
