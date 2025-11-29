@@ -1,0 +1,33 @@
+# RepOrder Connector - Shopify App Configuration
+# This file configures webhook URLs for compliance webhooks
+# The actual webhook handlers run on your Render backend
+
+name = "RepOrder Connector"
+handle = "reporder-connector-app"
+client_id = "9738c4ce4602e4ad6016f6c174a61239"
+
+application_url = "https://reporder-connector.onrender.com"
+
+# Embedded app settings (set to false since this is an external app)
+embedded = false
+
+[access_scopes]
+scopes = "read_products,read_inventory,read_locations"
+
+[auth]
+redirect_urls = [
+  "https://reporder-connector.onrender.com/api/shopify/callback"
+]
+
+[webhooks]
+api_version = "2024-10"
+
+  # GDPR Mandatory Compliance Webhooks
+  [webhooks.privacy_compliance]
+  customer_deletion_url = "https://reporder-connector.onrender.com/api/shopify/webhooks/customers/redact"
+  customer_data_request_url = "https://reporder-connector.onrender.com/api/shopify/webhooks/customers/data_request"
+  shop_deletion_url = "https://reporder-connector.onrender.com/api/shopify/webhooks/shop/redact"
+
+[pos]
+embedded = false
+
