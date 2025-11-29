@@ -8,6 +8,7 @@ import connectionsRouter from './api/routes/connections'
 import syncRouter from './api/routes/sync'
 import inventoryRouter from './api/routes/inventory'
 import shopifyRouter from './api/routes/shopify'
+import shopifyWebhooksRouter from './api/routes/shopify-webhooks'
 import userRouter from './api/routes/user'
 import requestsRouter from './api/routes/requests'
 import vendorsRouter from './api/routes/vendors'
@@ -19,7 +20,11 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 3004
 
-// Middleware
+// IMPORTANT: Shopify webhook routes MUST be registered BEFORE express.json()
+// because they need access to the raw body for HMAC signature verification
+app.use('/api/shopify/webhooks', shopifyWebhooksRouter)
+
+// Middleware for all other routes
 app.use(express.json())
 app.use(corsMiddleware)
 

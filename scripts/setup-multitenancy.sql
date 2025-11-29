@@ -221,18 +221,42 @@ CREATE POLICY "Public can update request items" ON restock_request_items
   FOR UPDATE USING (true);
 
 -- =====================================================
--- FUNCTION: Auto-create user profile on signup
+-- FUNCTION: Auto-create user profile and organization on signup
 -- =====================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  org_id UUID;
+  agency_name_val VARCHAR;
+  slug_val VARCHAR;
 BEGIN
-  INSERT INTO public.user_profiles (id, email, full_name)
+  -- Get agency name from metadata
+  agency_name_val := NEW.raw_user_meta_data->>'agency_name';
+  
+  -- Create organization if agency_name is provided
+  IF agency_name_val IS NOT NULL AND agency_name_val != '' THEN
+    -- Generate slug from agency name (lowercase, replace spaces with hyphens)
+    slug_val := lower(regexp_replace(agency_name_val, '[^a-zA-Z0-9]+', '-', 'g'));
+    slug_val := trim(both '-' from slug_val);
+    -- Add unique suffix if needed
+    slug_val := slug_val || '-' || substring(gen_random_uuid()::text, 1, 8);
+    
+    INSERT INTO public.organizations (name, slug)
+    VALUES (agency_name_val, slug_val)
+    RETURNING id INTO org_id;
+  END IF;
+
+  -- Insert user profile with organization link
+  INSERT INTO public.user_profiles (id, email, full_name, organization_id, role)
   VALUES (
     NEW.id,
     NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email)
+    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
+    org_id,
+    CASE WHEN org_id IS NOT NULL THEN 'owner' ELSE 'member' END
   );
+  
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -242,18 +266,4 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-
--- =====================================================
--- SEED: Create your first organization
--- Replace 'Your Agency Name' with your actual agency name
--- =====================================================
-
--- INSERT INTO organizations (name, slug) VALUES ('Your Agency Name', 'your-agency');
-
--- Then update your user profile to link to the org:
--- UPDATE user_profiles SET organization_id = (SELECT id FROM organizations WHERE slug = 'your-agency') WHERE email = 'your@email.com';
-
--- And update existing data:
--- UPDATE stores SET organization_id = (SELECT id FROM organizations WHERE slug = 'your-agency');
--- UPDATE platform_connections SET organization_id = (SELECT id FROM organizations WHERE slug = 'your-agency');
 

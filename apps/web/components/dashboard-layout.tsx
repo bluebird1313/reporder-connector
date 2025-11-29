@@ -213,7 +213,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/settings" className="cursor-pointer">
+                  <Link href="/settings/profile" className="cursor-pointer">
                     <User className="h-4 w-4 mr-2" />
                     Profile Settings
                   </Link>

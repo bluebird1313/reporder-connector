@@ -12,6 +12,7 @@ import Link from "next/link"
 export default function SignupPage() {
   const { signUp } = useAuth()
   const [fullName, setFullName] = useState("")
+  const [agencyName, setAgencyName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -33,9 +34,14 @@ export default function SignupPage() {
       return
     }
 
+    if (!agencyName.trim()) {
+      setError("Agency name is required")
+      return
+    }
+
     setLoading(true)
 
-    const { error } = await signUp(email, password, fullName)
+    const { error } = await signUp(email, password, fullName, agencyName)
     
     if (error) {
       setError(error.message)
@@ -108,6 +114,19 @@ export default function SignupPage() {
                   placeholder="John Doe"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
+                  required
+                  className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="agencyName" className="text-slate-300">Agency name</Label>
+                <Input
+                  id="agencyName"
+                  type="text"
+                  placeholder="Your Agency Name"
+                  value={agencyName}
+                  onChange={(e) => setAgencyName(e.target.value)}
                   required
                   className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
                 />

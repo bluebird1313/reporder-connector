@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reporder Connector - App Icon Generator</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+            font-family: 'DM Sans', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: #fff;
+        }
+        
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(90deg, #96fbc4, #f9f586);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .subtitle {
+            color: #888;
+            margin-bottom: 2rem;
+        }
+        
+        .preview-container {
+            background: rgba(255,255,255,0.05);
+            border-radius: 24px;
+            padding: 40px;
+            border: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 2rem;
+        }
+        
+        canvas {
+            display: block;
+            border-radius: 180px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        
+        .download-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 16px 48px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+        
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        
+        .specs {
+            margin-top: 2rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>Reporder Connector</h1>
+    <p class="subtitle">Shopify App Icon Generator</p>
+    
+    <div class="preview-container">
+        <canvas id="iconCanvas" width="400" height="400"></canvas>
+    </div>
+    
+    <button class="download-btn" onclick="downloadIcon()">Download 1200x1200 PNG</button>
+    
+    <p class="specs">Output: 1200 × 1200px PNG (Shopify App Icon)</p>
+
+    <script>
+        function drawIcon(ctx, size) {
+            const scale = size / 400;
+            ctx.save();
+            ctx.scale(scale, scale);
+            
+            // Background gradient
+            const bgGradient = ctx.createLinearGradient(0, 0, 400, 400);
+            bgGradient.addColorStop(0, '#1a1a2e');
+            bgGradient.addColorStop(0.5, '#16213e');
+            bgGradient.addColorStop(1, '#0f3460');
+            
+            // Draw rounded rectangle background
+            ctx.beginPath();
+            roundRect(ctx, 0, 0, 400, 400, 80);
+            ctx.fillStyle = bgGradient;
+            ctx.fill();
+            
+            // Subtle pattern overlay
+            ctx.globalAlpha = 0.03;
+            for (let i = 0; i < 20; i++) {
+                ctx.beginPath();
+                ctx.arc(Math.random() * 400, Math.random() * 400, Math.random() * 60 + 20, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            
+            // Glow effect
+            const glowGradient = ctx.createRadialGradient(200, 200, 0, 200, 200, 200);
+            glowGradient.addColorStop(0, 'rgba(102, 126, 234, 0.15)');
+            glowGradient.addColorStop(1, 'rgba(102, 126, 234, 0)');
+            ctx.fillStyle = glowGradient;
+            ctx.fillRect(0, 0, 400, 400);
+            
+            // Draw connector symbol - two connected nodes
+            const centerX = 200;
+            const centerY = 200;
+            
+            // Connection line with gradient
+            ctx.beginPath();
+            ctx.moveTo(120, 160);
+            ctx.bezierCurveTo(200, 120, 200, 280, 280, 240);
+            const lineGradient = ctx.createLinearGradient(120, 160, 280, 240);
+            lineGradient.addColorStop(0, '#667eea');
+            lineGradient.addColorStop(1, '#f093fb');
+            ctx.strokeStyle = lineGradient;
+            ctx.lineWidth = 8;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            
+            // Data flow dots on the line
+            ctx.globalAlpha = 0.6;
+            const dots = [[150, 145], [185, 155], [215, 210], [250, 235]];
+            dots.forEach((dot, i) => {
+                ctx.beginPath();
+                ctx.arc(dot[0], dot[1], 4, 0, Math.PI * 2);
+                ctx.fillStyle = i % 2 === 0 ? '#96fbc4' : '#f9f586';
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+            
+            // Left node (source) - Shopify-inspired bag shape
+            drawShopifyBag(ctx, 95, 130, 50, '#667eea', '#764ba2');
+            
+            // Right node (destination) - circular sync icon
+            drawSyncIcon(ctx, 280, 240, 45, '#f093fb', '#f5576c');
+            
+            // "R" letter accent
+            ctx.font = 'bold 36px "DM Sans", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const textGradient = ctx.createLinearGradient(185, 310, 215, 340);
+            textGradient.addColorStop(0, '#96fbc4');
+            textGradient.addColorStop(1, '#f9f586');
+            ctx.fillStyle = textGradient;
+            ctx.fillText('R', 200, 325);
+            
+            ctx.restore();
+        }
+        
+        function roundRect(ctx, x, y, width, height, radius) {
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+        }
+        
+        function drawShopifyBag(ctx, x, y, size, color1, color2) {
+            ctx.save();
+            
+            // Shadow
+            ctx.shadowColor = 'rgba(102, 126, 234, 0.5)';
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 5;
+            
+            // Bag body
+            const gradient = ctx.createLinearGradient(x - size/2, y - size/2, x + size/2, y + size/2);
+            gradient.addColorStop(0, color1);
+            gradient.addColorStop(1, color2);
+            
+            ctx.beginPath();
+            ctx.moveTo(x - size/2 + 8, y - size/3);
+            ctx.lineTo(x + size/2 - 8, y - size/3);
+            ctx.lineTo(x + size/2, y + size/2);
+            ctx.lineTo(x - size/2, y + size/2);
+            ctx.closePath();
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            ctx.shadowColor = 'transparent';
+            
+            // Handle
+            ctx.beginPath();
+            ctx.arc(x, y - size/3 - 5, size/4, Math.PI, 0, false);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        function drawSyncIcon(ctx, x, y, size, color1, color2) {
+            ctx.save();
+            
+            // Shadow
+            ctx.shadowColor = 'rgba(240, 147, 251, 0.5)';
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 5;
+            
+            // Circle background
+            const gradient = ctx.createLinearGradient(x - size, y - size, x + size, y + size);
+            gradient.addColorStop(0, color1);
+            gradient.addColorStop(1, color2);
+            
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            ctx.shadowColor = 'transparent';
+            
+            // Sync arrows
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            
+            // Top arrow
+            ctx.beginPath();
+            ctx.arc(x, y, size * 0.5, -Math.PI * 0.8, Math.PI * 0.2, false);
+            ctx.stroke();
+            
+            // Arrow head 1
+            ctx.beginPath();
+            ctx.moveTo(x + size * 0.35, y - size * 0.1);
+            ctx.lineTo(x + size * 0.5, y + size * 0.15);
+            ctx.lineTo(x + size * 0.2, y + size * 0.15);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            
+            // Bottom arrow
+            ctx.beginPath();
+            ctx.arc(x, y, size * 0.5, Math.PI * 0.2, Math.PI * 1.2, false);
+            ctx.stroke();
+            
+            // Arrow head 2
+            ctx.beginPath();
+            ctx.moveTo(x - size * 0.35, y + size * 0.1);
+            ctx.lineTo(x - size * 0.5, y - size * 0.15);
+            ctx.lineTo(x - size * 0.2, y - size * 0.15);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+        
+        // Draw preview
+        const previewCanvas = document.getElementById('iconCanvas');
+        const previewCtx = previewCanvas.getContext('2d');
+        drawIcon(previewCtx, 400);
+        
+        function downloadIcon() {
+            // Create high-res canvas
+            const exportCanvas = document.createElement('canvas');
+            exportCanvas.width = 1200;
+            exportCanvas.height = 1200;
+            const exportCtx = exportCanvas.getContext('2d');
+            
+            drawIcon(exportCtx, 1200);
+            
+            // Download
+            const link = document.createElement('a');
+            link.download = 'reporder-connector-shopify-icon-1200x1200.png';
+            link.href = exportCanvas.toDataURL('image/png');
+            link.click();
+        }
+    </script>
+</body>
+</html>
+
